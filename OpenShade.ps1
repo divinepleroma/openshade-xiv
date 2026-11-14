@@ -1,28 +1,27 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    A guided, readable setup for ReShade + GPosingway on FINAL FANTASY XIV.
+    OpenShade XIV: installs ReShade and GPosingway for FINAL FANTASY XIV.
 
 .DESCRIPTION
-    This script walks you through installing two things into your game folder:
+    Installs two things into the FINAL FANTASY XIV game folder:
 
-      1. ReShade      - the program that draws visual effects (https://reshade.me)
-      2. GPosingway   - a community pack of effects and presets for FFXIV
+      1. ReShade      - post-processing injector (https://reshade.me)
+      2. GPosingway   - community shader and preset pack for FFXIV
                         (https://github.com/gposingway/gposingway)
 
-    It downloads both from their official homes, checks each download against
-    the fingerprint listed in manifest.json, and stops if anything differs.
-    When it has finished it checks its own work and tells you the result.
+    Both are downloaded from their official sources and verified against the
+    SHA-256 checksums in manifest.json. Existing files are backed up before
+    being replaced, and the result is verified after installation.
 
-    It never installs a background program, and never downloads or runs code
-    other than what is listed in manifest.json. Everything it does is in this
-    one file, top to bottom.
+    No background program is installed, and nothing is downloaded or run
+    other than what manifest.json lists. The whole tool is this one file.
 
 .PARAMETER DryRun
     Preview mode. Explains every step but downloads and changes nothing.
 
 .PARAMETER Uninstall
-    Removes what this walkthrough installed and puts back what it moved aside.
+    Removes what this tool installed and restores what it backed up.
 
 .PARAMETER Check
     Changes nothing. Looks at an existing install and reports whether it is
@@ -52,14 +51,15 @@ $ErrorActionPreference = 'Stop'
 #  Settings
 # ---------------------------------------------------------------------------
 
-$ToolName     = 'xiv-reshade-walkthrough'
-$ToolVersion  = '0.2.0'
+$ToolTitle    = 'OpenShade XIV'
+$ToolName     = 'openshade-xiv'             # used for folder names
+$ToolVersion  = '0.3.0'
 $GameExe      = 'ffxiv_dx11.exe'
-$RecordFolder = '.xiv-reshade-walkthrough'   # created inside the game folder
-$StopPrefix   = 'WALKTHROUGH-STOP: '
+$RecordFolder = '.openshade-xiv'            # created inside the game folder
+$StopPrefix   = 'OPENSHADE-STOP: '
 
 # File types a shader pack has no reason to contain. If the pack ever
-# includes one of these, the walkthrough refuses to unpack it.
+# includes one of these, the tool refuses to unpack it.
 $BlockedExtensions = @(
     '.exe', '.dll', '.com', '.scr', '.msi', '.bat', '.cmd', '.ps1', '.psm1',
     '.vbs', '.js', '.jse', '.wsf', '.hta', '.lnk', '.reg', '.sys', '.jar',
@@ -132,7 +132,7 @@ function Test-Interactive {
 
 # Asks a yes/no question. If it gets no usable answer five times in a row
 # (for example the window lost its keyboard input), it gives up safely:
-# "no" when -DefaultNo is set, otherwise it stops the walkthrough.
+# "no" when -DefaultNo is set, otherwise it stops.
 function Ask-YesNo {
     param([string]$Question, [switch]$DefaultNo)
     if ($AssumeYes) { Write-Log "ASK (auto-yes): $Question"; return $true }
@@ -143,7 +143,7 @@ function Ask-YesNo {
         if ($answer -match '^\s*n') { return $false }
     }
     if ($DefaultNo) { return $false }
-    Stop-Here "I didn't get a yes or no, so I stopped to be safe."
+    Stop-Here 'No valid answer received. Stopped.'
 }
 
 function Wait-Enter {
@@ -183,36 +183,37 @@ function Get-Prop {
 }
 
 # ---------------------------------------------------------------------------
-#  Checking this PC can run the walkthrough (before anything else happens)
+#  Checking this PC can run the tool (before anything else happens)
 # ---------------------------------------------------------------------------
 
 # Runs a few harmless self-tests of the exact features used later: file
 # fingerprints, zip archives and secure downloads. If any of them does not
-# behave as expected on this PC, the walkthrough stops before touching anything.
+# behave as expected on this PC, the tool stops before touching anything.
 function Test-Environment {
     # These first checks use only basic commands so they still work on
     # locked-down PCs, where the point is to explain why it can't continue.
-    if ($env:OS -ne 'Windows_NT') { Stop-Here 'This walkthrough only works on Windows.' }
+    if ($env:OS -ne 'Windows_NT') { Stop-Here 'This tool requires Windows.' }
     $mode = [string]$ExecutionContext.SessionState.LanguageMode
     if ($mode -ne 'FullLanguage') {
-        Stop-Here ("This PC limits what PowerShell scripts are allowed to do (mode: $mode). That is common on work or " +
-                   "school computers. The walkthrough can't run here, and nothing was changed.")
+        Stop-Here ("PowerShell on this PC is restricted (language mode: $mode), which is common on managed work or " +
+                   'school computers. This tool cannot run here. No changes were made.')
     }
     if (-not [Environment]::Is64BitOperatingSystem) {
-        Stop-Here 'FINAL FANTASY XIV and this walkthrough need 64-bit Windows. Nothing was changed.'
+        Stop-Here 'This tool requires 64-bit Windows. No changes were made.'
     }
 
     $failed = New-Object System.Collections.Generic.List[string]
 
     # 1. Can it write to its own working folder and fingerprint a file?
+    $probe = $null
     try {
         if (-not (Test-Path -LiteralPath $AppData)) { New-Item -ItemType Directory -Path $AppData -Force | Out-Null }
         $probe = Join-Path $AppData ('selftest-' + [Guid]::NewGuid().ToString('N') + '.tmp')
-        [System.IO.File]::WriteAllBytes($probe, [System.Text.Encoding]::ASCII.GetBytes('xiv-reshade-walkthrough self-test'))
+        [System.IO.File]::WriteAllBytes($probe, [System.Text.Encoding]::ASCII.GetBytes('openshade-xiv self-test'))
         $hash = Get-Sha256 $probe
-        Remove-Item -LiteralPath $probe -Force
-        if ($hash -ine 'f84fe38b39a80752f0c0f890db9563337f8cc649beb51ae8a22df74a305f31a8') { throw "unexpected fingerprint $hash" }
-    } catch { $failed.Add("file fingerprints ($($_.Exception.Message))") }
+        if ($hash -ine 'cd7ebc45286f4e30e4dac9139dcd109f6e2749dfdb31afd22bdf340e90a8b23b') { throw "unexpected checksum $hash" }
+    } catch { $failed.Add("file checksums ($($_.Exception.Message))") }
+    finally { if ($probe) { Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue } }
 
     # 2. Can it create and read a zip archive?
     try {
@@ -247,19 +248,18 @@ function Test-Environment {
     } catch { }
 
     if ($failed.Count -gt 0) {
-        Stop-Here ("This PC failed a self-check, so I stopped before doing anything. What didn't work: " +
-                   ($failed -join '; ') + ". Nothing was changed. The log is at: $LogPath")
+        Stop-Here ('System check failed: ' + ($failed -join '; ') + ". No changes were made. Log: $LogPath")
     }
 }
 
-# Makes sure only one copy of the walkthrough runs at a time.
+# Makes sure only one copy of the tool runs at a time.
 function Enter-SingleInstance {
     try {
         $created = $false
         $script:Mutex = [System.Threading.Mutex]::new($true, "Local\$ToolName", [ref]$created)
         if (-not $created) {
             $script:Mutex.Dispose(); $script:Mutex = $null
-            Stop-Here 'The walkthrough is already open in another window. Finish or close that one first.'
+            Stop-Here 'Another instance is already running. Close it first.'
         }
     } catch {
         if (([string]$_.Exception.Message).StartsWith($StopPrefix)) { throw }
@@ -314,7 +314,7 @@ function Format-GameLine {
     $bits = New-Object System.Collections.Generic.List[string]
     if ($info.Version) { $bits.Add("game version $($info.Version)") }
     if ($info.Updated) { $bits.Add("last patched $($info.Updated.ToString('yyyy-MM-dd'))") }
-    if ($Source)       { $bits.Add("found via $Source") }
+    if ($Source)       { $bits.Add("source: $Source") }
     if ($bits.Count -eq 0) { return $Folder }
     return ('{0}   ({1})' -f $Folder, ($bits -join ', '))
 }
@@ -332,7 +332,7 @@ function Find-GameFolders {
         foreach ($proc in @(Get-Process -Name 'ffxiv_dx11' -ErrorAction SilentlyContinue)) {
             $procPath = $null
             try { $procPath = $proc.Path } catch { }
-            Add-Place $places $procPath 'the game that is running right now'
+            Add-Place $places $procPath 'running game process'
         }
     } catch { }
 
@@ -359,7 +359,7 @@ function Find-GameFolders {
             foreach ($item in @(Get-ItemProperty -Path $key -ErrorAction SilentlyContinue)) {
                 $name = [string](Get-Prop $item 'DisplayName' '')
                 if ($name -like 'FINAL FANTASY XIV*') {
-                    Add-Place $places ([string](Get-Prop $item 'InstallLocation' '')) "Windows' list of installed programs"
+                    Add-Place $places ([string](Get-Prop $item 'InstallLocation' '')) 'installed programs list'
                 }
             }
         } catch { }
@@ -415,7 +415,7 @@ function Find-GameFolders {
             foreach ($link in $links) {
                 if (-not $shell) { $shell = New-Object -ComObject WScript.Shell }
                 # CreateShortcut on an existing shortcut only reads it.
-                Add-Place $places ([string]$shell.CreateShortcut($link.FullName).TargetPath) 'a shortcut'
+                Add-Place $places ([string]$shell.CreateShortcut($link.FullName).TargetPath) 'shortcut'
             }
         }
     } catch { }
@@ -430,7 +430,7 @@ function Find-GameFolders {
             if (-not (Test-Path -LiteralPath $key)) { continue }
             foreach ($valueName in (Get-Item -LiteralPath $key).GetValueNames()) {
                 $m = [regex]::Match($valueName, '^(?<p>[A-Za-z]:\\.*?\\ffxiv(_dx11|boot|boot64|launcher|launcher64)?\.exe)', 'IgnoreCase')
-                if ($m.Success) { Add-Place $places $m.Groups['p'].Value "Windows' record of programs you have run" }
+                if ($m.Success) { Add-Place $places $m.Groups['p'].Value 'recently run programs' }
             }
         } catch { }
     }
@@ -441,7 +441,7 @@ function Find-GameFolders {
             if ($drive.DriveType -ne 'Fixed' -or -not $drive.IsReady) { continue }
             $root = $drive.RootDirectory.FullName
             foreach ($sub in @('Program Files (x86)\SquareEnix', 'Program Files\SquareEnix', 'SquareEnix', 'Games\SquareEnix', 'Games')) {
-                Add-Place $places (Join-Path $root "$sub\FINAL FANTASY XIV - A Realm Reborn") 'the default install folder'
+                Add-Place $places (Join-Path $root "$sub\FINAL FANTASY XIV - A Realm Reborn") 'default install folder'
             }
         }
     } catch { }
@@ -483,52 +483,52 @@ function Show-GamePicker {
 function Select-GameFolder {
     if ($GamePath) {
         $resolved = Resolve-GameFolder $GamePath
-        if (-not $resolved) { Stop-Here "I couldn't find $GameExe in: $GamePath" }
+        if (-not $resolved) { Stop-Here "$GameExe not found in: $GamePath" }
         return $resolved
     }
 
-    Say '  Looking for your game (this only reads, it changes nothing)...'
+    Say '  Searching for the game (read-only)...'
     $found = @(Find-GameFolders)
 
     if ($found.Count -eq 1) {
-        Say-Ok ('Found it: ' + (Format-GameLine $found[0].Path $found[0].Source))
-        if (Ask-YesNo '  Is this the right game folder?') { return $found[0].Path }
+        Say-Ok ('Found: ' + (Format-GameLine $found[0].Path $found[0].Source))
+        if (Ask-YesNo '  Use this folder?') { return $found[0].Path }
     } elseif ($found.Count -gt 1) {
-        Say '  I found more than one copy of the game:'
+        Say '  Multiple installs found:'
         for ($i = 0; $i -lt $found.Count; $i++) {
             Say ("    {0}. {1}" -f ($i + 1), (Format-GameLine $found[$i].Path $found[$i].Source)) 'White'
         }
-        Say '  If you are not sure, the one patched most recently is usually the one you play.'
+        Say '  The most recently patched install is usually the active one.'
         if ($AssumeYes) { return $found[0].Path }
         for ($try = 1; $try -le 5; $try++) {
-            $pick = Read-Host "  Type the number of the one you play (or press Enter to choose a different folder)"
+            $pick = Read-Host "  Enter a number (or press Enter to choose another folder)"
             if (-not $pick) { break }
             $n = 0
             if ([int]::TryParse($pick, [ref]$n) -and $n -ge 1 -and $n -le $found.Count) { return $found[$n - 1].Path }
         }
     } else {
-        Say-Note "I couldn't find the game on my own. That's fine."
+        Say-Note 'Game not found automatically.'
     }
 
-    if ($AssumeYes) { Stop-Here 'No game folder found. Pass -GamePath to say where it is.' }
+    if ($AssumeYes) { Stop-Here 'Game folder not found. Use -GamePath to specify it.' }
     $canBrowse = Test-Interactive
     Say ''
-    Say '  Your game folder usually ends in:'
+    Say '  The game folder usually ends in:'
     Say '    ...\FINAL FANTASY XIV - A Realm Reborn\game' 'White'
     if ($canBrowse) {
-        Say "  Press Enter to browse for $GameExe, or paste the folder path here."
+        Say "  Press Enter to browse for $GameExe, or paste the folder path."
     } else {
-        Say '  Open it in File Explorer, click the address bar, copy the path and paste it here.'
+        Say '  Paste the folder path.'
     }
     for ($try = 1; $try -le 8; $try++) {
-        $typed = Read-Host '  Game folder (or Q to quit)'
+        $typed = Read-Host '  Game folder (Q to quit)'
         if ($typed -match '^\s*q\s*$') { Stop-Here 'No changes were made.' }
         if (-not $typed -and $canBrowse) { $typed = Show-GamePicker }
         $resolved = Resolve-GameFolder $typed
         if ($resolved) { return $resolved }
-        Say-Note "I couldn't find $GameExe there. Try again."
+        Say-Note "$GameExe not found there."
     }
-    Stop-Here "I couldn't find the game folder. No changes were made."
+    Stop-Here 'Game folder not found. No changes were made.'
 }
 
 # A last sanity check on the chosen folder before anything is planned for it.
@@ -536,8 +536,7 @@ function Confirm-GameFolder {
     param([string]$Game)
     $info = Get-GameInfo $Game
     if (-not $info.LooksComplete) {
-        Say-Note "This folder has $GameExe but is missing the rest of the game's files,"
-        Say '       so it may be a copy, a leftover, or the wrong folder.'
+        Say-Note "This folder contains $GameExe but not the rest of the game files."
         if (-not (Ask-YesNo '  Use it anyway?')) { Stop-Here 'No changes were made.' }
     }
 }
@@ -567,14 +566,14 @@ function Save-Download {
     try {
         $response = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
         if (-not $response.IsSuccessStatusCode) {
-            Stop-Here ("The website answered with an error ($([int]$response.StatusCode)) when I asked for $Label. " +
-                       'The file has probably moved, which means this walkthrough needs an update. Nothing in your game was changed.')
+            Stop-Here ("${Label}: the server returned an error ($([int]$response.StatusCode)). " +
+                       'The file may have moved, and this tool may need an update. No changes were made.')
         }
         $total = $response.Content.Headers.ContentLength
         if ($ExpectedSize -and $total -and $total -ne $ExpectedSize) {
-            Stop-Here ("The file on the website for $Label is a different size than this walkthrough expects " +
-                       "($total bytes, expected $ExpectedSize). It has probably been updated, so I did not download it. " +
-                       'Check for a newer version of this walkthrough. Nothing in your game was changed.')
+            Stop-Here ("${Label}: the file on the server is a different size than expected " +
+                       "($total bytes, expected $ExpectedSize). It was not downloaded. " +
+                       'Check for an updated version of this tool. No changes were made.')
         }
         $inStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
         $outStream = [System.IO.File]::Create($part)
@@ -612,25 +611,25 @@ function Get-CheckedDownload {
     $target = Join-Path $CacheDir $Asset.fileName
 
     if (Test-Path -LiteralPath $target) {
-        Say '  You already have this download. Checking it is intact...'
+        Say '  Already downloaded. Verifying checksum...'
         if (Test-Fingerprint $target $Asset.sha256) {
-            Say-Ok 'It matches the published fingerprint. No need to download again.'
+            Say-Ok 'Checksum verified. Download skipped.'
             return $target
         }
-        Say-Note 'The earlier download is incomplete or different. Fetching a fresh copy.'
+        Say-Note 'Existing download is incomplete or different. Downloading again.'
         Remove-Item -LiteralPath $target -Force
     }
 
     try {
         $free = (Get-Item -LiteralPath $CacheDir).PSDrive.Free
         if ($free -and $free -lt ([long]$Asset.size + 50MB)) {
-            Stop-Here ("There isn't enough free space to download $($Asset.name): it needs $(Format-Size $Asset.size) and " +
-                       "the drive has $(Format-Size $free) free. Free up some space and run this again. Nothing in your game was changed.")
+            Stop-Here ("Not enough free space to download $($Asset.name): $(Format-Size $Asset.size) needed, " +
+                       "$(Format-Size $free) free. No changes were made.")
         }
     } catch { if (([string]$_.Exception.Message).StartsWith($StopPrefix)) { throw } }
 
     $siteName = ([System.Uri]$Asset.url).Host
-    Say "  Downloading from: $($Asset.url)"
+    Say "  Downloading: $($Asset.url)"
     for ($attempt = 1; ; $attempt++) {
         try {
             Save-Download -Url $Asset.url -Destination $target -Label $Asset.name -ExpectedSize $Asset.size
@@ -639,22 +638,22 @@ function Get-CheckedDownload {
             if (([string]$_.Exception.Message).StartsWith($StopPrefix)) { throw }
             Write-Log ("Download attempt $attempt failed: " + ($_ | Out-String))
             Remove-Item -LiteralPath "$target.part" -Force -ErrorAction SilentlyContinue
-            Say-Note "The download from $siteName didn't finish."
-            if ($attempt -ge 3 -or -not (Ask-YesNo -DefaultNo '  Try again?')) {
-                Stop-Here ("I couldn't download $($Asset.name) from $siteName. Check your internet connection, and any VPN, " +
-                           'firewall or antivirus that might be blocking it, then run this again. Nothing in your game was changed.')
+            Say-Note "Download from $siteName failed."
+            if ($attempt -ge 3 -or -not (Ask-YesNo -DefaultNo '  Retry?')) {
+                Stop-Here ("Could not download $($Asset.name) from $siteName. Check the internet connection and any VPN, " +
+                           'firewall or antivirus, then run this again. No changes were made.')
             }
         }
     }
 
-    Say '  Checking the download against its published fingerprint...'
+    Say '  Verifying checksum...'
     if (-not (Test-Fingerprint $target $Asset.sha256)) {
         Remove-Item -LiteralPath $target -Force
-        Stop-Here ("The file I downloaded for $($Asset.name) does not match the fingerprint in manifest.json. " +
-                   "I deleted it and changed nothing in your game. This usually means the download was cut short, " +
-                   "or the file on the website changed. Try again later, or check for a newer version of this walkthrough.")
+        Stop-Here ("$($Asset.name): the downloaded file does not match the checksum in manifest.json. " +
+                   'It was deleted and no changes were made. The download may be incomplete, or the file on the ' +
+                   'server may have changed. Try again later, or check for an updated version of this tool.')
     }
-    Say-Ok 'The download matches. It is the exact file this walkthrough expects.'
+    Say-Ok 'Download verified.'
     return $target
 }
 
@@ -717,24 +716,23 @@ function Invoke-Pack {
             if (-not $relative) { continue }
             $top = $relative.Split('\')[0]
             if ($AllowedTopLevel -notcontains $top) {
-                Stop-Here "The pack contains something unexpected ('$top'). I stopped before unpacking anything."
+                Stop-Here "The pack contains an unexpected item ('$top'). Nothing was unpacked."
             }
             $target = [System.IO.Path]::GetFullPath((Join-Path $root $relative))
             if (-not $target.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {
-                Stop-Here "The pack tried to place a file outside your game folder ('$relative'). I stopped before unpacking anything."
+                Stop-Here "The pack contains a path outside the game folder ('$relative'). Nothing was unpacked."
             }
             $isFolder = $relative.EndsWith('\')
             if (-not $isFolder) {
                 $ext = [System.IO.Path]::GetExtension($relative).ToLowerInvariant()
                 if ($BlockedExtensions -contains $ext) {
-                    Stop-Here "The pack contains a program or script ('$relative'). Effect packs should not. I stopped before unpacking anything."
+                    Stop-Here "The pack contains a program or script ('$relative'). Nothing was unpacked."
                 }
                 $bytes += $entry.Length
             }
             if ($target.Length -gt $MaxPathLength) {
-                Stop-Here ("Your game folder's path is too long for some of the pack's files (Windows allows about 260 " +
-                           "characters, and '$relative' would need $($target.Length)). Moving the game to a shorter path " +
-                           'would fix it. I stopped before unpacking anything.')
+                Stop-Here ("The game folder path is too long for some pack files (Windows allows about 260 characters; " +
+                           "'$relative' needs $($target.Length)). Move the game to a shorter path. Nothing was unpacked.")
             }
             $plan.Add([pscustomobject]@{ Entry = $entry; Target = $target; IsFolder = $isFolder; Relative = $relative })
         }
@@ -763,10 +761,10 @@ function Invoke-Pack {
             [System.IO.Compression.ZipFileExtensions]::ExtractToFile($item.Entry, $item.Target, $true)
             $n++
             if ($n % 40 -eq 0) {
-                Write-Progress -Activity 'Unpacking effects and presets' -Status "$n of $($files.Count) files" -PercentComplete ([int](100 * $n / $files.Count))
+                Write-Progress -Activity 'Unpacking shaders and presets' -Status "$n of $($files.Count) files" -PercentComplete ([int](100 * $n / $files.Count))
             }
         }
-        Write-Progress -Activity 'Unpacking effects and presets' -Completed
+        Write-Progress -Activity 'Unpacking shaders and presets' -Completed
         return $result
     } finally {
         $zip.Dispose()
@@ -810,29 +808,29 @@ function Wait-GameClosed {
     param([string]$GameFolder)
     $tries = 0
     while (Test-GameRunning $GameFolder) {
-        Say-Note 'The game is running. Please close it completely first.'
-        if ($DryRun) { Say '       (Preview mode, so I will carry on.)'; return }
+        Say-Note 'The game is running. Close it before continuing.'
+        if ($DryRun) { Say '       (Preview mode: continuing.)'; return }
         $tries++
         if ($AssumeYes -or $tries -gt 10) { Stop-Here 'The game is running. Close it and run this again.' }
-        Wait-Enter '  Press Enter once the game is closed'
+        Wait-Enter '  Press Enter when the game is closed'
     }
 }
 
 function Read-Manifest {
     if (-not (Test-Path -LiteralPath $ManifestPath)) {
-        Stop-Here ("I can't find manifest.json next to this script. If you opened this from inside a zip file, " +
-                   'extract the whole folder first (right-click the zip, "Extract All"), then run it from there.')
+        Stop-Here ('manifest.json was not found next to this script. If this was opened from inside a zip file, ' +
+                   'extract the whole folder first (right-click the zip, "Extract All").')
     }
     try { $m = Get-Content -LiteralPath $ManifestPath -Raw | ConvertFrom-Json }
-    catch { Stop-Here 'manifest.json is damaged and cannot be read. Download a fresh copy of this walkthrough.' }
+    catch { Stop-Here 'manifest.json is damaged and cannot be read. Download a fresh copy of this tool.' }
     foreach ($hash in @((Get-Prop (Get-Prop $m 'reshade') 'sha256' ''), (Get-Prop (Get-Prop $m 'reshade') 'dllSha256' ''),
                         (Get-Prop (Get-Prop $m 'gposingway') 'sha256' ''))) {
         if ($hash -notmatch '^[0-9a-fA-F]{64}$') {
-            Stop-Here 'manifest.json is missing a fingerprint, so I cannot check downloads. Get a complete copy of this walkthrough.'
+            Stop-Here 'manifest.json is missing a checksum. Download a fresh copy of this tool.'
         }
     }
     foreach ($url in @($m.reshade.url, $m.gposingway.url)) {
-        if ($url -notmatch '^https?://') { Stop-Here 'manifest.json has a download address I do not recognise. Get a fresh copy of this walkthrough.' }
+        if ($url -notmatch '^https?://') { Stop-Here 'manifest.json contains an invalid download address. Download a fresh copy of this tool.' }
     }
     return $m
 }
@@ -872,32 +870,32 @@ function Get-InstallChecks {
     function Add-Check { param($List, [string]$Name, [bool]$Ok, [string]$Advice = '')
         $List.Add([pscustomobject]@{ Name = $Name; Ok = $Ok; Advice = $Advice })
     }
-    $rerun = 'Run Install.cmd again to repair it.'
-    $antivirus = 'Security software sometimes removes or blocks this file. Run Install.cmd again; if it disappears again, ' +
-                 'allow the game folder in your antivirus.'
+    $rerun = 'Run Install.cmd to repair.'
+    $antivirus = 'The file may have been removed or blocked by security software. Run Install.cmd again; if it is ' +
+                 'removed again, add the game folder as an exception.'
 
-    Add-Check $checks "The game is still where it was ($GameExe)" (Test-Path -LiteralPath (Join-Path $Game $GameExe) -PathType Leaf) `
-        'The game folder has moved or been removed. Run Install.cmd and choose the new location.'
+    Add-Check $checks "Game executable present ($GameExe)" (Test-Path -LiteralPath (Join-Path $Game $GameExe) -PathType Leaf) `
+        'The game folder has moved or been removed. Run Install.cmd and select the new location.'
 
     $reshadeFile = [string](Get-Prop $Record 'reshadeFile' 'dxgi.dll')
     $dll = Join-Path $Game $reshadeFile
     if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) {
-        Add-Check $checks "ReShade is in place ($reshadeFile)" $false $antivirus
+        Add-Check $checks "ReShade present ($reshadeFile)" $false $antivirus
     } else {
         $version = [string](Get-Prop $Record 'reshadeVersion' '')
-        Add-Check $checks "ReShade $version is in place and unchanged ($reshadeFile)" (Test-Fingerprint $dll ([string](Get-Prop $Record 'reshadeSha256' ''))) `
-            ('The file is there but is not the one this walkthrough installed. Another tool may have replaced it. ' + $rerun)
+        Add-Check $checks "ReShade $version present and unmodified ($reshadeFile)" (Test-Fingerprint $dll ([string](Get-Prop $Record 'reshadeSha256' ''))) `
+            ('The file differs from the installed version. Another tool may have replaced it. ' + $rerun)
     }
 
     $packItems = @(Get-Prop $Record 'packItems' @())
     $missing = @($packItems | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Game $_)) })
-    Add-Check $checks 'The effects and presets folders are there' ($missing.Count -eq 0) ("Missing: $($missing -join ', '). " + $rerun)
+    Add-Check $checks 'Shader and preset folders present' ($missing.Count -eq 0) ("Missing: $($missing -join ', '). " + $rerun)
 
     if ($PackZip) {
         $verify = Invoke-Pack -ZipPath $PackZip -Destination $Game -AllowedTopLevel $packItems -Mode Verify
         foreach ($p in @($verify.Problems | Select-Object -First 20)) { Write-Log "VERIFY $p" }
-        Add-Check $checks "Every file from the pack arrived intact ($($verify.Files) files)" ($verify.Problems.Count -eq 0) `
-            ("$($verify.Problems.Count) file(s) are missing or the wrong size (listed in the log). " + $rerun)
+        Add-Check $checks "All pack files present and correct size ($($verify.Files) files)" ($verify.Problems.Count -eq 0) `
+            ("$($verify.Problems.Count) file(s) missing or wrong size (see log). " + $rerun)
     } else {
         $expected = [int](Get-Prop $Record 'packFileCount' 0)
         if ($expected -gt 0 -and $missing.Count -eq 0) {
@@ -908,8 +906,8 @@ function Get-InstallChecks {
                     $present += @(Get-ChildItem -LiteralPath $path -Recurse -File -ErrorAction SilentlyContinue).Count
                 } elseif (Test-Path -LiteralPath $path) { $present++ }
             }
-            Add-Check $checks "The pack's files are all there ($present found, $expected installed)" ($present -ge $expected) `
-                ("$($expected - $present) file(s) have gone missing since the install. " + $rerun)
+            Add-Check $checks "Pack files present ($present found, $expected installed)" ($present -ge $expected) `
+                ("$($expected - $present) file(s) missing since install. " + $rerun)
         }
     }
 
@@ -921,8 +919,8 @@ function Get-InstallChecks {
                 $pointsAtPack = [bool](Select-String -LiteralPath $ini -Pattern '^EffectSearchPaths=.*reshade-shaders' -Quiet)
             }
         } catch { }
-        Add-Check $checks 'ReShade is set up to use the installed effects' $pointsAtPack `
-            ('ReShade.ini is missing or points somewhere else, so presets may show no effects. ' + $rerun)
+        Add-Check $checks 'ReShade.ini points to the installed shaders' $pointsAtPack `
+            ('ReShade.ini is missing or points elsewhere; presets may show no effects. ' + $rerun)
     }
     return $checks.ToArray()
 }
@@ -943,7 +941,7 @@ function Show-Checks {
 }
 
 # ---------------------------------------------------------------------------
-#  The install walkthrough
+#  Install
 # ---------------------------------------------------------------------------
 
 function Start-Install {
@@ -951,45 +949,34 @@ function Start-Install {
     $steps = 6
 
     Say ''
-    Say '  ReShade + GPosingway setup for FINAL FANTASY XIV' 'White'
-    Say "  $ToolName $ToolVersion"
-    if ($DryRun) { Say '  PREVIEW MODE: nothing will be downloaded or changed.' 'Magenta' }
-    Say-Ok 'Self-check passed: this PC can run the walkthrough.'
+    Say "  $ToolTitle $ToolVersion" 'White'
+    Say '  ReShade + GPosingway setup for FINAL FANTASY XIV'
+    if ($DryRun) { Say '  PREVIEW MODE: nothing is downloaded or changed.' 'Magenta' }
+    Say-Ok 'System check passed.'
     Say ''
-    Say '  This will add screen effects (colour, lighting, depth of field) to'
-    Say '  your game by installing two free community tools:'
+    Say '  Installs:'
+    Say "    ReShade $($m.reshade.version) (add-on edition)   $($m.reshade.homepage)" 'White'
+    Say "    GPosingway $($m.gposingway.version)   $($m.gposingway.homepage)" 'White'
     Say ''
-    Say "    ReShade $($m.reshade.version)   the program that draws the effects" 'White'
-    Say "      $($m.reshade.homepage)"
-    Say "    GPosingway $($m.gposingway.version)   effects and presets made for FFXIV" 'White'
-    Say "      $($m.gposingway.homepage)"
+    Say '  Files are downloaded from their official sources and verified against'
+    Say '  the SHA-256 checksums in manifest.json. Existing files are backed up'
+    Say '  before being replaced. Nothing outside the game folder is modified.'
     Say ''
-    Say '  What I will do:'
-    Say '    - download both from their official websites'
-    Say '    - check each download is exactly the file this walkthrough expects'
-    Say '    - move anything I would replace into a backup folder first'
-    Say '    - copy the files into your game folder, then check my own work'
-    Say '  What I will not do:'
-    Say '    - ask for administrator rights or your password'
-    Say '    - install anything that keeps running or updates itself'
-    Say '    - touch your characters, settings, or anything outside the game folder'
+    Say '  Third-party tools are not permitted by the FINAL FANTASY XIV terms of'
+    Say '  service. This software is provided "as is", without warranty of any'
+    Say '  kind. Use at your own risk.'
     Say ''
-    Say '  One honest note: Square Enix does not allow third-party tools.'
-    Say '  ReShade only changes what is drawn on your own screen, and many'
-    Say '  players use it, but using it is your decision. Do not mention it'
-    Say '  in game chat.'
-    Say ''
-    if (-not (Ask-YesNo '  Ready to start?')) { Stop-Here 'No changes were made.' }
+    if (-not (Ask-YesNo '  Continue?')) { Stop-Here 'No changes were made.' }
 
     # --- Step 1 -----------------------------------------------------------
-    Say-Step 1 $steps 'Find your game'
+    Say-Step 1 $steps 'Locate game'
     $game = Select-GameFolder
     Confirm-GameFolder $game
-    Say-Ok "Using: $game"
+    Say-Ok "Game folder: $game"
     Wait-GameClosed $game
 
     # --- Step 2 -----------------------------------------------------------
-    Say-Step 2 $steps "Check what's already there"
+    Say-Step 2 $steps 'Existing files'
     $dxgi        = Join-Path $game $m.reshade.installAs
     $recordDir   = Join-Path $game $RecordFolder
     $stamp       = Get-Date -Format 'yyyy-MM-dd_HH-mm-ss'
@@ -997,7 +984,7 @@ function Start-Install {
     $toBackUp    = New-Object System.Collections.Generic.List[string]
     $reshadeDone = $false
 
-    # If this walkthrough was used here before, remember what was in the
+    # If this tool was used here before, remember what was in the
     # folder BEFORE that first install, so Uninstall still restores that.
     $prev         = Get-Record $game
     $origBackup   = $null      # where the pre-install files were put
@@ -1008,43 +995,40 @@ function Start-Install {
         $origNames   = @($prev.backedUp)
         $oursAlready = @($prev.packItems)
         if ($prev.reshadeInstalled) { $oursAlready += [string]$prev.reshadeFile }
-        if (Get-Prop $prev 'completed' $true) { Say "  This walkthrough was used here before, so I'll refresh that install." }
-        else { Say-Note "An earlier run here did not finish. I'll redo it from the start." }
+        if (Get-Prop $prev 'completed' $true) { Say '  A previous install by this tool was found. It will be refreshed.' }
+        else { Say-Note 'A previous run did not finish. Starting over.' }
     }
 
     $gshadeFiles = @(@($m.reshade.installAs) + $OtherInjectorNames | Where-Object {
         (Test-Path -LiteralPath (Join-Path $game $_)) -and ((Get-ProductName (Join-Path $game $_)) -like '*GShade*') })
     if ((Test-Path -LiteralPath (Join-Path $game 'GShade.ini')) -or $gshadeFiles.Count -gt 0) {
-        Stop-Here ('GShade is installed in this game folder. Please remove it with its own uninstaller first ' +
-                   '(Windows Settings > Apps > GShade), then run this again. I changed nothing.')
+        Stop-Here ('GShade is installed in this game folder. Uninstall it first ' +
+                   '(Windows Settings > Apps > GShade), then run this again. No changes were made.')
     }
 
     if (Test-Path -LiteralPath $dxgi) {
         if (Test-Fingerprint $dxgi $m.reshade.dllSha256) {
-            Say-Ok "ReShade $($m.reshade.version) is already installed. I'll leave it as it is."
+            Say-Ok "ReShade $($m.reshade.version) is already installed."
             $reshadeDone = $true
         } else {
             $product = Get-ProductName $dxgi
             if ($product -like '*ReShade*') {
-                Say "  A different version of ReShade is installed. I'll back it up and"
-                Say "  replace it with $($m.reshade.version), the version GPosingway is built for."
+                Say "  A different ReShade version is installed. It will be backed up and replaced with $($m.reshade.version)."
             } else {
-                Say-Note "There is a file called $($m.reshade.installAs) here that isn't ReShade"
-                Say "       (it says it is: '$product'). Another tool may have put it there."
+                Say-Note "$($m.reshade.installAs) exists but is not ReShade (product: '$product')."
                 if (-not (Ask-YesNo '  Move it to the backup folder and continue?')) { Stop-Here 'No changes were made.' }
             }
             $toBackUp.Add($m.reshade.installAs)
         }
     } else {
-        Say '  ReShade is not installed yet.'
+        Say '  ReShade is not installed.'
     }
 
     # A second copy of ReShade under another file name would load twice.
     foreach ($name in $OtherInjectorNames) {
         $other = Join-Path $game $name
         if ((Test-Path -LiteralPath $other) -and ((Get-ProductName $other) -like '*ReShade*')) {
-            Say-Note "ReShade is also installed here under another name ($name). Two copies"
-            Say '       would clash, so I will move that one to the backup folder too.'
+            Say-Note "ReShade is also installed as $name. It will be moved to the backup folder to avoid a conflict."
             $toBackUp.Add($name)
         }
     }
@@ -1053,89 +1037,86 @@ function Start-Install {
         if (Test-Path -LiteralPath (Join-Path $game $name)) { $toBackUp.Add($name) }
     }
     if ($toBackUp.Count -gt 0) {
-        Say '  These already exist, so I will move them to a backup folder first:'
+        Say '  Existing files to be backed up:'
         foreach ($name in $toBackUp) { Say "    $name" 'White' }
-        Say "  Backups are kept in: $(Join-Path $recordDir 'backup')"
+        Say "  Backup location: $(Join-Path $recordDir 'backup')"
     } else {
-        Say-Ok 'Nothing here needs backing up.'
+        Say-Ok 'Nothing to back up.'
     }
 
     if (-not $DryRun) {
         if (-not (Test-CanWrite $game)) {
-            Stop-Here ('Windows is not letting me write to the game folder. This is common when the game is in ' +
-                       '"Program Files", or when security software protects the folder. Close this window, right-click ' +
-                       'Install.cmd, choose "Run as administrator", and start again. I changed nothing.')
+            Stop-Here ('Cannot write to the game folder. This is common when the game is in "Program Files" or the ' +
+                       'folder is protected by security software. Right-click Install.cmd, choose "Run as administrator", ' +
+                       'and try again. No changes were made.')
         }
         try {
             $free = (Get-Item -LiteralPath $game).PSDrive.Free
             $need = [long]$m.gposingway.size * 2 + 100MB
             if ($free -and $free -lt $need) {
-                Say-Note ("You have {0} free on this drive and this needs about {1}." -f (Format-Size $free), (Format-Size $need))
+                Say-Note ("Low disk space: {0} free, about {1} needed." -f (Format-Size $free), (Format-Size $need))
                 if (-not (Ask-YesNo '  Continue anyway?')) { Stop-Here 'No changes were made.' }
             }
         } catch { if (([string]$_.Exception.Message).StartsWith($StopPrefix)) { throw } }
     }
 
     # --- Step 3 -----------------------------------------------------------
-    Say-Step 3 $steps 'Get ReShade'
-    Say '  ReShade is the program that applies effects to the picture. FFXIV'
-    Say '  needs the "add-on" edition, which lets effects see how far away'
-    Say '  things are (needed for depth of field and similar effects).'
-    Say "  Official site: $($m.reshade.homepage)"
+    Say-Step 3 $steps 'ReShade'
+    Say "  ReShade $($m.reshade.version), add-on edition (required for depth-based effects)."
+    Say "  Source: $($m.reshade.homepage)"
     Say ''
     $reshadeDll = $null
     if ($reshadeDone) {
-        Say-Ok 'Already installed and matching. Skipping this step.'
+        Say-Ok 'Already installed. Skipped.'
     } elseif ($DryRun) {
         Say-Preview "Would download $($m.reshade.fileName) ($(Format-Size $m.reshade.size)) from $($m.reshade.url)"
-        Say-Preview "Would check it, take $($m.reshade.dllEntry) out of it, and check that too."
+        Say-Preview "Would verify it and extract $($m.reshade.dllEntry)."
     } else {
         $setup = Get-CheckedDownload $m.reshade
-        Say "  Taking $($m.reshade.dllEntry) out of the setup file (without running it)..."
+        Say "  Extracting $($m.reshade.dllEntry) from the setup file (the setup program is not run)..."
         $reshadeDll = Join-Path $CacheDir ("ReShade64-$($m.reshade.version).dll")
         if (-not (Export-ReShadeDll -SetupPath $setup -EntryName $m.reshade.dllEntry -OutPath $reshadeDll)) {
-            Stop-Here "I couldn't find $($m.reshade.dllEntry) inside the ReShade setup file. I changed nothing in your game."
+            Stop-Here "$($m.reshade.dllEntry) was not found in the ReShade setup file. No changes were made."
         }
         if (-not (Test-Fingerprint $reshadeDll $m.reshade.dllSha256)) {
             Remove-Item -LiteralPath $reshadeDll -Force
-            Stop-Here 'The ReShade file I extracted does not match the fingerprint in manifest.json. I changed nothing in your game.'
+            Stop-Here 'The extracted ReShade file does not match the checksum in manifest.json. No changes were made.'
         }
-        Say-Ok 'ReShade is ready and verified.'
+        Say-Ok 'ReShade verified.'
     }
 
     # --- Step 4 -----------------------------------------------------------
-    Say-Step 4 $steps 'Get GPosingway'
-    Say '  GPosingway is a pack of effects and ready-made looks ("presets")'
-    Say '  collected by the FFXIV community, set up so they work together.'
-    Say "  Official site: $($m.gposingway.homepage)"
-    Say "  It is a big download: $(Format-Size $m.gposingway.size)."
+    Say-Step 4 $steps 'GPosingway'
+    Say "  GPosingway $($m.gposingway.version): shaders and presets for FFXIV."
+    Say "  Source: $($m.gposingway.homepage)"
+    Say "  Download size: $(Format-Size $m.gposingway.size)."
     Say ''
     $pack = $null
     $inside = $null
     if ($DryRun) {
         Say-Preview "Would download $($m.gposingway.fileName) from $($m.gposingway.url)"
-        Say-Preview 'Would check it, then check every file inside before unpacking.'
+        Say-Preview 'Would verify it and inspect every file before unpacking.'
     } else {
         $pack = Get-CheckedDownload $m.gposingway
-        Say '  Checking what is inside the pack before unpacking...'
+        Say '  Inspecting pack contents...'
         $inside = Invoke-Pack -ZipPath $pack -Destination $game -AllowedTopLevel $m.gposingway.allowedTopLevel -Mode Inspect
-        Say-Ok "$($inside.Files) files, all effects, images and settings. No programs or scripts."
+        Say-Ok "$($inside.Files) files. No programs or scripts."
     }
 
     # --- Step 5 -----------------------------------------------------------
-    Say-Step 5 $steps 'Install into your game folder'
-    Say '  Here is exactly what will change in:'
+    Say-Step 5 $steps 'Install'
+    Say '  Changes to be made in:'
     Say "    $game" 'White'
-    foreach ($name in $toBackUp) { Say "    move    $name  ->  backup folder" }
-    if (-not $reshadeDone) { Say "    add     $($m.reshade.installAs)  (this is ReShade)" }
+    foreach ($name in $toBackUp) { Say "    move    $name  ->  backup" }
+    if (-not $reshadeDone) { Say "    add     $($m.reshade.installAs)  (ReShade)" }
     foreach ($name in $m.gposingway.allowedTopLevel) { Say "    add     $name" }
     Say ''
     if ($DryRun) {
-        Say-Preview 'Preview finished. Nothing was downloaded or changed.'
-        Say '  Run Install.cmd when you are ready to do it for real.'
+        Say-Preview 'Preview complete. Nothing was downloaded or changed.'
+        Say '  Run Install.cmd to install.'
         return
     }
-    if (-not (Ask-YesNo '  Go ahead?')) { Stop-Here 'No changes were made to your game.' }
+    if (-not (Ask-YesNo '  Proceed?')) { Stop-Here 'No changes were made.' }
     Wait-GameClosed $game
 
     $script:ChangesStarted = $true
@@ -1176,7 +1157,7 @@ function Start-Install {
         if ($isOurs) { $destDir = $replacedDir } else { $restoreNames.Add($name) }
         if (-not (Test-Path -LiteralPath $destDir)) { New-Item -ItemType Directory -Path $destDir -Force | Out-Null }
         Move-Item -LiteralPath (Join-Path $game $name) -Destination (Join-Path $destDir $name)
-        Say-Ok "Moved $name to the backup folder."
+        Say-Ok "Moved $name to backup."
     }
     if ($restoreNames.Count -gt 0) {
         $record.backupFolder = $restoreDir
@@ -1189,46 +1170,40 @@ function Start-Install {
         Copy-Item -LiteralPath $reshadeDll -Destination $dxgi -Force
         Say-Ok "Added $($m.reshade.installAs)."
     }
-    Say '  Unpacking effects and presets. This takes a minute or two...'
+    Say '  Unpacking shaders and presets...'
     $unpacked = Invoke-Pack -ZipPath $pack -Destination $game -AllowedTopLevel $m.gposingway.allowedTopLevel -Mode Unpack
     Say-Ok "Unpacked $($unpacked.Files) files."
 
     # --- Step 6 -----------------------------------------------------------
-    Say-Step 6 $steps 'Double-check the result'
-    Say '  Comparing your game folder against what should have been installed...'
+    Say-Step 6 $steps 'Verify'
+    Say '  Verifying installed files...'
     $recordObject = Get-Record $game
     $failed = Show-Checks (Get-InstallChecks -Game $game -Record $recordObject -PackZip $pack)
     if ($failed -gt 0) {
         $script:ExitCode = 1
         Say ''
-        Say "  $failed check(s) did not pass, so the install is not complete." 'Red'
-        Say '  Nothing is harmed: run Install.cmd again to repair it, or'
-        Say '  Uninstall.cmd to put everything back the way it was.'
-        Say "  The log is at: $LogPath"
+        Say "  $failed check(s) failed. The install is incomplete." 'Red'
+        Say '  Run Install.cmd to repair, or Uninstall.cmd to restore the previous state.'
+        Say "  Log: $LogPath"
         return
     }
     $record.completed = $true
     ($record | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath $recordPath -Encoding UTF8
 
     Say ''
-    Say '  All done, and every check passed.' 'Green'
+    Say '  Installation complete. All checks passed.' 'Green'
     Say ''
-    Say '  What to do next:'
-    Say '    1. Start the game as usual. A ReShade banner appears at the top'
-    Say '       for a moment while effects load. That means it worked.'
-    Say '    2. Press Shift+F2 to open the ReShade menu and pick a preset' 'White'
-    Say '       from the list at the top.'
-    Say '    3. Press Shift+F3 to switch all effects off or on. Effects cost' 'White'
-    Say '       performance, so many players switch them off for hard fights.'
+    Say '  Next steps:'
+    Say '    1. Start the game. A ReShade banner appears briefly at the top of the screen.'
+    Say '    2. Shift+F2 opens the ReShade menu. Select a preset from the list at the top.'
+    Say '    3. Shift+F3 toggles all effects.'
     Say ''
-    Say '  If no banner appears, run Check.cmd: it tells you whether ReShade'
-    Say '  started with the game and what to do if it did not.'
-    Say '  Help and troubleshooting:'
-    Say '    https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md'
-    Say '  To undo everything, run Uninstall.cmd.'
-    Say "  A full log of this run is at: $LogPath"
+    Say '  No banner: run Check.cmd.'
+    Say '  Troubleshooting: https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md'
+    Say '  Uninstall: run Uninstall.cmd.'
+    Say "  Log: $LogPath"
     Say ''
-    if (Ask-YesNo -DefaultNo -Question ("  Delete the downloaded pack to free up {0}? (It is no longer needed)" -f (Format-Size $m.gposingway.size))) {
+    if (Ask-YesNo -DefaultNo -Question ("  Delete the downloaded pack ({0})? It is no longer needed." -f (Format-Size $m.gposingway.size))) {
         Remove-Item -LiteralPath $pack -Force
         Say-Ok 'Deleted.'
     }
@@ -1240,32 +1215,31 @@ function Start-Install {
 
 function Start-Check {
     Say ''
-    Say '  Check my ReShade + GPosingway install' 'White'
-    Say '  This only looks. It changes nothing.'
-    Say-Ok 'Self-check passed: this PC can run the walkthrough.'
+    Say "  $ToolTitle $ToolVersion - install check (read-only)" 'White'
+    Say-Ok 'System check passed.'
     Say ''
     $game = Select-GameFolder
-    Say-Ok "Looking at: $game"
+    Say-Ok "Game folder: $game"
     Say ''
     $record = Get-Record $game
     $logInfo = Get-ReShadeLogInfo $game
 
     if (-not $record) {
-        Say-Note 'This walkthrough has not installed anything here, so I can only describe what I see:'
+        Say-Note 'No install by this tool was found here. Current state:'
         $dll = Join-Path $game 'dxgi.dll'
-        if (Test-Path -LiteralPath $dll) { Say "    dxgi.dll is present and says it is: '$(Get-ProductName $dll)'" }
-        else { Say '    dxgi.dll is not present, so ReShade is not installed in the usual way.' }
+        if (Test-Path -LiteralPath $dll) { Say "    dxgi.dll: present (product: '$(Get-ProductName $dll)')" }
+        else { Say '    dxgi.dll: not present' }
         foreach ($name in @('reshade-shaders', 'reshade-presets', 'ReShade.ini')) {
-            if (Test-Path -LiteralPath (Join-Path $game $name)) { Say "    $name is present" } else { Say "    $name is not present" }
+            if (Test-Path -LiteralPath (Join-Path $game $name)) { Say "    ${name}: present" } else { Say "    ${name}: not present" }
         }
-        if ($logInfo) { Say "    ReShade last started with the game on $($logInfo.When.ToString('yyyy-MM-dd HH:mm')) (version $($logInfo.Version))" }
+        if ($logInfo) { Say "    ReShade last started with the game: $($logInfo.When.ToString('yyyy-MM-dd HH:mm')) (version $($logInfo.Version))" }
         Say ''
-        Say '  Run Install.cmd if you would like this walkthrough to set it up.'
+        Say '  Run Install.cmd to install.'
         return
     }
 
     if (-not (Get-Prop $record 'completed' $true)) {
-        Say-Note 'The last install here did not finish.'
+        Say-Note 'The last install did not finish.'
     }
     $failed = Show-Checks (Get-InstallChecks -Game $game -Record $record)
 
@@ -1275,40 +1249,36 @@ function Start-Check {
         try { $installedAt = [DateTime]::Parse([string]$installedAt, [System.Globalization.CultureInfo]::InvariantCulture) } catch { $installedAt = $null }
     }
     if (-not $logInfo) {
-        Say-Note 'ReShade has not started with the game yet. Start the game once, then'
-        Say '       run this check again. You should see a ReShade banner at the top'
-        Say '       of the screen while the game loads.'
+        Say-Note 'ReShade has not started with the game yet. Start the game once, then run this check again.'
     } elseif ($installedAt -and $logInfo.When -lt $installedAt) {
-        Say-Note 'ReShade has not started with the game since this install. Start the'
-        Say '       game once, then run this check again.'
+        Say-Note 'ReShade has not started with the game since this install. Start the game once, then run this check again.'
     } else {
-        Say-Ok "ReShade started with the game on $($logInfo.When.ToString('yyyy-MM-dd HH:mm')) (version $($logInfo.Version))."
-        Say '       In game, Shift+F2 opens its menu and Shift+F3 switches effects on and off.'
+        Say-Ok "ReShade last started with the game: $($logInfo.When.ToString('yyyy-MM-dd HH:mm')) (version $($logInfo.Version))."
     }
 
     Say ''
     if ($failed -gt 0) {
         $script:ExitCode = 1
-        Say "  $failed check(s) did not pass. See the advice next to each one above." 'Red'
+        Say "  $failed check(s) failed. See the notes above." 'Red'
     } else {
-        Say '  Everything this walkthrough installed is in place.' 'Green'
+        Say '  All installed files are in place.' 'Green'
     }
 }
 
 # ---------------------------------------------------------------------------
-#  The uninstall walkthrough
+#  Uninstall
 # ---------------------------------------------------------------------------
 
 function Start-Uninstall {
     Say ''
-    Say '  Remove ReShade + GPosingway' 'White'
-    if ($DryRun) { Say '  PREVIEW MODE: nothing will be changed.' 'Magenta' }
+    Say "  $ToolTitle $ToolVersion - uninstall ReShade + GPosingway" 'White'
+    if ($DryRun) { Say '  PREVIEW MODE: nothing is changed.' 'Magenta' }
     Say ''
     $game = Select-GameFolder
     $record = Get-Record $game
     if (-not $record) {
-        Stop-Here ("I have no record of installing anything in $game, so I won't remove anything. " +
-                   'If you installed ReShade another way, use the uninstall option in its own setup program.')
+        Stop-Here ("No install by this tool was found in $game. Nothing was removed. " +
+                   'If ReShade was installed another way, use its own setup program to uninstall it.')
     }
     Wait-GameClosed $game
 
@@ -1317,28 +1287,28 @@ function Start-Uninstall {
     $removeDll = $false
     if ($record.reshadeInstalled -and (Test-Path -LiteralPath $dxgi)) {
         if (Test-Fingerprint $dxgi $record.reshadeSha256) { $removeDll = $true }
-        else { Say-Note "$($record.reshadeFile) has changed since I installed it, so I will leave it alone." }
+        else { Say-Note "$($record.reshadeFile) has been modified since install and will be left in place." }
     }
 
     $extras = @('ReShade.log', 'ReShadePreset.ini') | Where-Object { Test-Path -LiteralPath (Join-Path $game $_) }
-    Say '  This will change the following in:'
+    Say '  Changes to be made in:'
     Say "    $game" 'White'
     if ($removeDll) { Say "    remove  $($record.reshadeFile)" }
     foreach ($name in $record.packItems) {
         if (Test-Path -LiteralPath (Join-Path $game $name)) { Say "    remove  $name" }
     }
-    foreach ($name in $extras) { Say "    remove  $name  (made by ReShade while running)" }
+    foreach ($name in $extras) { Say "    remove  $name  (created by ReShade)" }
     $hasBackup = $record.backupFolder -and (Test-Path -LiteralPath $record.backupFolder)
     if ($hasBackup) {
-        foreach ($name in $record.backedUp) { Say "    restore $name  (from the backup made at install)" }
+        foreach ($name in $record.backedUp) { Say "    restore $name  (from backup)" }
     }
     Say ''
-    Say-Note 'Presets you saved inside reshade-presets will be removed too.'
-    if ($DryRun) { Say-Preview 'Preview finished. Nothing was changed.'; return }
-    if (-not (Ask-YesNo '  Go ahead?')) { Stop-Here 'No changes were made.' }
+    Say-Note 'Presets saved in reshade-presets will also be removed.'
+    if ($DryRun) { Say-Preview 'Preview complete. Nothing was changed.'; return }
+    if (-not (Ask-YesNo '  Proceed?')) { Stop-Here 'No changes were made.' }
     if (-not (Test-CanWrite $game)) {
-        Stop-Here ('Windows is not letting me write to the game folder. Close this window, right-click Uninstall.cmd, ' +
-                   'choose "Run as administrator", and start again. I changed nothing.')
+        Stop-Here ('Cannot write to the game folder. Right-click Uninstall.cmd, choose "Run as administrator", ' +
+                   'and try again. No changes were made.')
     }
 
     $script:ChangesStarted = $true
@@ -1362,13 +1332,13 @@ function Start-Uninstall {
     $left = @(Get-ChildItem -LiteralPath $recordDir -Recurse -File -ErrorAction SilentlyContinue)
     if ($left.Count -eq 0) { Remove-Item -LiteralPath $recordDir -Recurse -Force }
     else {
-        Say-Note "Files from earlier installs (including presets you saved) are kept in:"
+        Say-Note 'Files from earlier installs (including saved presets) remain in:'
         Say "       $recordDir"
-        Say "       Delete that folder once you no longer need them."
+        Say '       Delete that folder when no longer needed.'
     }
 
     Say ''
-    Say '  Done. Your game folder is back to how it was.' 'Green'
+    Say '  Uninstall complete. The game folder has been restored.' 'Green'
 }
 
 # ---------------------------------------------------------------------------
@@ -1386,15 +1356,15 @@ try {
     if ($message.StartsWith($StopPrefix)) {
         Say ('  ' + $message.Substring($StopPrefix.Length)) 'Yellow'
     } else {
-        Say '  Something unexpected went wrong, so I stopped.' 'Red'
+        Say '  Unexpected error. Stopped.' 'Red'
         Say "  $message" 'Red'
         if ($script:ChangesStarted) {
-            Say '  Your game folder may be only partly changed. Run Uninstall.cmd to put'
-            Say '  it back the way it was, or run Install.cmd to try again.'
+            Say '  The game folder may be partly changed. Run Uninstall.cmd to restore it,'
+            Say '  or Install.cmd to try again.'
         } else {
-            Say '  Nothing in your game folder was changed.'
+            Say '  No changes were made to the game folder.'
         }
-        Say "  Details are in the log: $LogPath"
+        Say "  Log: $LogPath"
         Write-Log ($_ | Out-String)
     }
     $script:ExitCode = 1

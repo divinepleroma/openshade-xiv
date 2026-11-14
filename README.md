@@ -1,169 +1,129 @@
-# xiv-reshade-walkthrough
+# OpenShade XIV
 
-A guided setup for **ReShade + GPosingway** on FINAL FANTASY XIV, written so
-you can see exactly what it does.
+OpenShade XIV installs [ReShade](https://reshade.me) and
+[GPosingway](https://github.com/gposingway/gposingway) for FINAL FANTASY XIV
+from their official sources, with checksum verification, backup and uninstall.
 
-It is a single readable script, not a program. It downloads ReShade and
-GPosingway from their official homes, checks each download against a known
-fingerprint, shows you what will change in your game folder, and asks before
-it changes anything.
+It is open source and consists of a single readable PowerShell script. There is no compiled program, no
+background process and no auto-update. This project does not redistribute
+ReShade, GPosingway, or any shader or preset.
 
-This project does not contain or re-upload ReShade, GPosingway, or anyone's
-shaders or presets. It only fetches them from where their authors publish them.
+## Requirements
 
-## How to use it
+- Windows 10 or 11, 64-bit (tested on Windows 11)
+- Windows PowerShell 5.1, which is included with Windows
+- About 1 GB of free disk space
+- FINAL FANTASY XIV, DirectX 11 client
 
-1. Download this project (green **Code** button, then **Download ZIP**).
-2. Right-click the zip and choose **Extract All**. Do not run the files from
-   inside the zip; they need to sit together in a normal folder.
-3. Close the game.
-4. Double-click **`Preview.cmd`** to see every step without changing anything.
-5. Double-click **`Install.cmd`** to do it for real.
+## Usage
 
-Windows may ask whether you want to run a file you downloaded. That is
-expected for any downloaded script. You can open every file here in Notepad
-first if you want to read it.
+1. Download this project (**Code** > **Download ZIP**) and extract it
+   (right-click the zip > **Extract All**). Do not run it from inside the zip.
+2. Close the game.
+3. Run **`Install.cmd`**.
 
-When it finishes, start the game and press **Shift+F2** to open the ReShade
-menu. **Shift+F3** switches all effects off and on.
+In game, **Shift+F2** opens the ReShade menu and **Shift+F3** toggles effects.
 
-| File | What it does |
+| File | Purpose |
 |---|---|
-| `Preview.cmd` | Explains every step. Downloads and changes nothing. |
-| `Install.cmd` | Installs, then double-checks its own work. Also repairs an install. |
-| `Check.cmd` | Changes nothing. Tells you whether the install is complete and whether ReShade has started with the game. |
+| `Preview.cmd` | Shows every step. Downloads and changes nothing. |
+| `Install.cmd` | Installs, then verifies the result. Also repairs an existing install. |
+| `Check.cmd` | Read-only. Reports whether the install is complete and whether ReShade has started with the game. |
 | `Uninstall.cmd` | Removes what was installed and restores what was backed up. |
 
-## What it does, step by step
+## What it installs
 
-1. **Finds your game**, wherever it is installed. See
-   [How it finds your game](#how-it-finds-your-game) below.
-2. **Checks what is already there.** If ReShade or shader folders already
-   exist, it plans to move them into a backup folder. If GShade is installed
-   it stops and asks you to remove that first.
-3. **Gets ReShade** from [reshade.me](https://reshade.me), checks the download,
-   and takes the one file it needs (`ReShade64.dll`) out of the setup file
-   without running the setup program.
-4. **Gets GPosingway** from its
-   [GitHub releases](https://github.com/gposingway/gposingway/releases), checks
-   the download, and inspects every file inside before unpacking.
-5. **Shows the full list of changes and asks.** Only then does it move the
-   old files to the backup and copy the new ones in.
-6. **Double-checks the result.** It compares every installed file against the
-   pack and confirms ReShade is in place and unchanged. If anything is off it
-   says so, and tells you what to do.
+| Component | Version | Source |
+|---|---|---|
+| ReShade, add-on edition | 6.8.0 | reshade.me |
+| GPosingway | 8.3.1 (release R8.2.1) | github.com/gposingway/gposingway |
 
-## How it finds your game
+Versions, download addresses and SHA-256 checksums are pinned in
+[`manifest.json`](manifest.json). Nothing else is downloaded.
 
-It reads a few places that already exist on your PC. It does not scan your
-drives, and it changes nothing while looking:
+## How it works
 
-- the game itself, if it happens to be running
-- XIVLauncher's settings
-- Windows' list of installed programs
-- Steam's own records of where its games are, including extra libraries
-- Desktop and Start menu shortcuts named after the game
-- Windows' record of programs you have run, looking only for FFXIV's
-- the default install folders
+1. **Locate game.** Reads existing records only; no drive scan. Sources: the
+   running game process, XIVLauncher settings, the installed programs list,
+   Steam library records, Desktop and Start menu shortcuts, recently run
+   programs, and the default install folders. Multiple installs are listed
+   with game version and last patch date. A folder can also be browsed for or
+   pasted.
+2. **Existing files.** Anything that would be replaced is moved to a backup
+   folder inside the game folder.
+3. **ReShade.** Downloads the official setup file, verifies it, and extracts
+   `ReShade64.dll` without running the setup program. It is installed as
+   `dxgi.dll`.
+4. **GPosingway.** Downloads the release package, verifies it, and inspects
+   every entry before unpacking.
+5. **Install.** Lists every change and asks for confirmation first.
+6. **Verify.** Compares the installed files against the package and confirms
+   ReShade is present and unmodified.
 
-If it finds more than one copy, it lists them with the game version and the
-date each was last patched, so you can tell which one you actually play. If it
-finds none, press Enter to browse for `ffxiv_dx11.exe`, or paste the folder.
+## Safeguards
 
-## Built-in safety checks
+- A system check runs first and stops if the PC cannot run the tool (for
+  example, restricted PowerShell on a managed computer).
+- Downloads are refused if the size or SHA-256 checksum does not match the
+  manifest.
+- The package is refused if it contains a program or script, an unexpected
+  top-level item, or a path outside the game folder.
+- The install stops if GShade is present, the game is running, the game folder
+  is not writable, or the folder path is too long for the package.
+- A second copy of ReShade under another file name is moved to the backup.
+- Only one instance can run at a time.
+- If a run fails partway, the tool reports whether the game folder was changed
+  and how to restore it.
 
-Before it starts:
+## Files and locations
 
-- **A self-check of your PC.** It tests the exact features it relies on (file
-  fingerprints, zip archives, secure downloads) and stops with an explanation
-  if any does not work, for example on a locked-down work computer.
-- **Only one copy runs at a time.**
-- **The folder must look like the real game**, not just contain a file with
-  the right name.
+| Location | Contents |
+|---|---|
+| `<game folder>\.openshade-xiv` | Install record and backups |
+| `%LOCALAPPDATA%\openshade-xiv` | Downloads and `log.txt` |
 
-Before it changes anything:
+## Troubleshooting
 
-- It stops if GShade is installed, if the game is running, if Windows will not
-  let it write to the folder, or if the game's path is too long for the pack's
-  files.
-- A second copy of ReShade under a different file name is moved to the backup,
-  so two copies cannot clash.
-- A download is refused if the website's file is a different size than
-  expected, or if its fingerprint does not match.
+- **"Cannot write to the game folder".** Right-click `Install.cmd` and choose
+  **Run as administrator**. This is common when the game is in `Program Files`.
+- **The script is blocked from running.** Some managed work or school PCs do
+  not allow downloaded scripts. The tool cannot run there.
+- **No ReShade banner in game.** Run `Check.cmd`, then see GPosingway's
+  [troubleshooting guide](https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md).
 
-Afterwards:
+## Updating the manifest
 
-- The install double-checks itself (step 6 above).
-- `Check.cmd` can repeat that check at any time. It also reads ReShade's own
-  log to tell you whether ReShade actually started with the game.
-- If something fails halfway, the script says whether your game folder was
-  touched and how to put it back.
-
-## What it will never do
-
-- Ask for your password, or for administrator rights. (The one exception: if
-  your game lives in `Program Files`, Windows itself may block writing there,
-  and the script will tell you how to rerun it as administrator.)
-- Install anything that keeps running, starts with Windows, or updates itself.
-- Download anything not listed in [`manifest.json`](manifest.json).
-- Unpack a pack that contains a program or script, or that tries to write
-  outside your game folder.
-- Touch your characters, game settings, or any other folder.
-
-## Check it yourself
-
-- [`Walkthrough.ps1`](Walkthrough.ps1) is the entire tool. The `.cmd` files
-  only open it.
-- [`manifest.json`](manifest.json) lists the two downloads: where they come
-  from, which version, and the SHA-256 fingerprint each must match.
-- A plain-text log of every run is saved to
-  `%LOCALAPPDATA%\xiv-reshade-walkthrough\log.txt`.
-- What it installed is recorded in `.xiv-reshade-walkthrough` inside your game
-  folder, next to the backups. `Uninstall.cmd` uses that record.
-
-## Good to know
-
-- **Terms of service.** Square Enix does not permit third-party tools. ReShade
-  only changes what is drawn on your own screen and is widely used, but using
-  it is your decision. Do not discuss it in game chat.
-- **Why this ReShade version.** The walkthrough installs one specific ReShade
-  version, listed in `manifest.json`, that has been checked with GPosingway.
-  It does not grab "the newest", because a version nobody has tested, or a
-  file nobody has fingerprinted, is exactly what this tool is meant to avoid.
-- **Why the "add-on" edition.** FFXIV needs it for effects that use depth,
-  such as depth of field.
-- **Size.** GPosingway is about 460 MB to download and the same again unpacked.
-
-## For maintainers
-
-When GPosingway or its supported ReShade version changes, update
-`manifest.json`:
+When a new ReShade or GPosingway version is adopted:
 
 1. Set the new `version`, `url`, `fileName` and `size`.
 2. Set `sha256` to the SHA-256 of the downloaded file. For GPosingway, GitHub
-   shows this as the asset's digest on the release page.
+   shows this as the asset digest on the release page.
 3. For ReShade, also set `dllSha256` to the SHA-256 of `ReShade64.dll` inside
    the setup file.
-4. Run `Preview.cmd`, then a real install on a test folder, before publishing.
+4. Run `Preview.cmd`, then a full install into a test folder.
 
-Never point the manifest at a "latest" link. A pinned version with a pinned
-fingerprint is what makes the download checkable.
+Do not point the manifest at a "latest" address. A pinned version with a
+pinned checksum is what makes the download verifiable.
+
+## Disclaimer
+
+- Third-party tools are not permitted by the FINAL FANTASY XIV terms of
+  service. Use at your own risk.
+- This software is provided "as is", without warranty of any kind. See
+  [LICENSE](LICENSE).
+- This project is not affiliated with or endorsed by Square Enix, ReShade or
+  GPosingway. FINAL FANTASY XIV is a registered trademark of Square Enix
+  Holdings Co., Ltd.
 
 ## Credits
 
-Walkthrough made by [divinepleroma](https://github.com/divinepleroma).
-
-The effects, presets and ReShade itself belong to others:
-
-- **ReShade** by crosire - <https://reshade.me>
-- **GPosingway** and its contributors - <https://github.com/gposingway/gposingway>.
-  Each shader and preset collection inside it has its own licence; see
-  GPosingway's [shader licences](https://github.com/gposingway/gposingway/blob/main/md/shader_licenses.md).
-
-This project is not affiliated with Square Enix, ReShade or GPosingway.
+- **ReShade** by crosire: <https://reshade.me>
+- **GPosingway** and its contributors:
+  <https://github.com/gposingway/gposingway>. Each shader and preset
+  collection it contains has its own licence; see its
+  [shader licences](https://github.com/gposingway/gposingway/blob/main/md/shader_licenses.md).
+- Maintained by [divinepleroma](https://github.com/divinepleroma).
 
 ## Licence
 
-The walkthrough script itself is released under the [MIT licence](LICENSE).
-That covers only the files in this project. ReShade, GPosingway and every
-shader and preset they contain keep their own licences.
+[MIT](LICENSE). This covers only the files in this project.

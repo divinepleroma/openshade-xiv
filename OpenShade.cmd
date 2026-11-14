@@ -1,11 +1,8 @@
 @echo off
-rem OpenShade XIV - opens the menu (Install, Preview, Check, Uninstall).
-rem Runs OpenShade.ps1 (in this folder) in Windows PowerShell.
-rem "-ExecutionPolicy Bypass" applies to this one window only and changes no
-rem system setting.
+rem OpenShade XIV launcher. Runs OpenShade.ps1 -Menu in Windows PowerShell.
+rem -ExecutionPolicy Bypass applies to this process only.
 setlocal
-rem Clear the inherited module path so this also works when started from a
-rem PowerShell 7 window.
+rem Cleared so Windows PowerShell loads its own modules when started from PowerShell 7.
 set "PSModulePath="
 set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if not exist "%PS%" set "PS=powershell.exe"
@@ -17,11 +14,9 @@ pause
 exit /b
 :notunzipped
 echo.
-echo   Required files were not found next to this file.
-echo   This usually means it was opened from inside the zip.
-echo.
+echo   OpenShade.ps1 or manifest.json was not found next to this file.
 echo   Extract the zip first (right-click the zip, "Extract All"),
-echo   then run this file from the extracted folder.
+echo   then run OpenShade.cmd from the extracted folder.
 echo.
 pause
 exit /b 1

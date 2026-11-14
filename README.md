@@ -70,7 +70,7 @@ Versions, download addresses and SHA-256 checksums are pinned in [`manifest.json
 ## Preview
 
 ```text
-OpenShade XIV 0.4.0
+OpenShade XIV 0.4.1
 ReShade + GPosingway setup for FINAL FANTASY XIV
 
   1. Install or repair
@@ -81,15 +81,12 @@ ReShade + GPosingway setup for FINAL FANTASY XIV
 
 Choose [1-4, Q]: 1
 
-[ok] System check passed.
-
 Installs:
-  ReShade 6.8.0 (add-on edition)   https://github.com/crosire/reshade
-  GPosingway 8.3.1   https://github.com/gposingway/gposingway
+  ReShade 6.8.0 (add-on edition)    https://github.com/crosire/reshade
+  GPosingway 8.3.1                  https://github.com/gposingway/gposingway
 
-Files are downloaded from their official sources and verified against
-the SHA-256 checksums in manifest.json. Existing files are backed up
-before being replaced. Nothing outside the game folder is modified.
+Downloads are verified against the SHA-256 checksums in manifest.json.
+Existing files are backed up before being replaced.
 
 Unofficial community tool. Not affiliated with Square Enix.
 

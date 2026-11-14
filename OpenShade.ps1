@@ -6,7 +6,7 @@
 .DESCRIPTION
     Installs two things into the FINAL FANTASY XIV game folder:
 
-      1. ReShade      - post-processing injector (https://reshade.me)
+      1. ReShade      - post-processing injector (https://github.com/crosire/reshade)
       2. GPosingway   - community shader and preset pack for FFXIV
                         (https://github.com/gposingway/gposingway)
 
@@ -53,7 +53,7 @@ $ErrorActionPreference = 'Stop'
 
 $ToolTitle    = 'OpenShade XIV'
 $ToolName     = 'openshade-xiv'             # used for folder names
-$ToolVersion  = '0.3.0'
+$ToolVersion  = '0.3.1'
 $GameExe      = 'ffxiv_dx11.exe'
 $RecordFolder = '.openshade-xiv'            # created inside the game folder
 $StopPrefix   = 'OPENSHADE-STOP: '
@@ -1063,7 +1063,7 @@ function Start-Install {
     # --- Step 3 -----------------------------------------------------------
     Say-Step 3 $steps 'ReShade'
     Say "  ReShade $($m.reshade.version), add-on edition (required for depth-based effects)."
-    Say "  Source: $($m.reshade.homepage)"
+    Say "  Project: $($m.reshade.homepage)"
     Say ''
     $reshadeDll = $null
     if ($reshadeDone) {
@@ -1088,7 +1088,7 @@ function Start-Install {
     # --- Step 4 -----------------------------------------------------------
     Say-Step 4 $steps 'GPosingway'
     Say "  GPosingway $($m.gposingway.version): shaders and presets for FFXIV."
-    Say "  Source: $($m.gposingway.homepage)"
+    Say "  Project: $($m.gposingway.homepage)"
     Say "  Download size: $(Format-Size $m.gposingway.size)."
     Say ''
     $pack = $null

@@ -1,0 +1,31 @@
+{
+  "manifestVersion": 1,
+  "updated": "2026-11-13",
+  "reshade": {
+    "name": "ReShade (add-on edition)",
+    "version": "6.8.0",
+    "homepage": "https://reshade.me",
+    "url": "https://reshade.me/downloads/ReShade_Setup_6.8.0_Addon.exe",
+    "fileName": "ReShade_Setup_6.8.0_Addon.exe",
+    "size": 4318424,
+    "sha256": "afe4c8f13048306307983b8b3d41d5bf00a86820440b0e57dea10950e1176445",
+    "dllEntry": "ReShade64.dll",
+    "dllSha256": "0cee63f9c9f13f3ac909c5b4903f4dbb4b719a7ab3b4f13b0deaf83c814b94f7",
+    "installAs": "dxgi.dll"
+  },
+  "gposingway": {
+    "name": "GPosingway",
+    "version": "8.3.1",
+    "releaseTag": "R8.2.1",
+    "homepage": "https://github.com/gposingway/gposingway",
+    "url": "https://github.com/gposingway/gposingway/releases/download/R8.2.1/gposingway.zip",
+    "fileName": "gposingway-R8.2.1.zip",
+    "size": 484758507,
+    "sha256": "e03b98d81905168f8bc42f3220cd67d6c37af73157a5569cf17df3b34f844551",
+    "allowedTopLevel": [
+      "ReShade.ini",
+      "reshade-presets",
+      "reshade-shaders"
+    ]
+  }
+}

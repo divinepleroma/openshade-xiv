@@ -1,0 +1,8 @@
+# The .cmd launchers must keep Windows (CRLF) line endings exactly as they
+# are, including in the zip GitHub offers for download. Batch files with
+# other line endings can misbehave.
+*.cmd -text
+
+*.ps1 text
+*.json text
+*.md text

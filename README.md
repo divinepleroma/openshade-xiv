@@ -66,7 +66,7 @@ Versions, download addresses and SHA-256 checksums are pinned in [`manifest.json
 ## Preview
 
 ```text
-OpenShade XIV 0.3.2
+OpenShade XIV 0.3.3
 ReShade + GPosingway setup for FINAL FANTASY XIV
 [ok] System check passed.
 
@@ -78,8 +78,7 @@ Files are downloaded from their official sources and verified against
 the SHA-256 checksums in manifest.json. Existing files are backed up
 before being replaced. Nothing outside the game folder is modified.
 
-Unofficial third-party tool, provided "as is" without warranty.
-Not affiliated with Square Enix.
+Unofficial community tool. Not affiliated with Square Enix.
 
 Continue? [Y/N]:
 ```
@@ -149,10 +148,6 @@ Continue? [Y/N]:
   Do not point the manifest at a "latest" address. A pinned version with a pinned checksum is what makes the download verifiable.
 </details>
 
-## Disclaimer
-
-OpenShade XIV is an unofficial third-party tool, provided "as is" without warranty (see [LICENSE](LICENSE)). It is not affiliated with or endorsed by Square Enix, ReShade or GPosingway. Use at your own discretion.
-
 ## Credits
 
 - [ReShade](https://github.com/crosire/reshade) by crosire.
@@ -160,8 +155,8 @@ OpenShade XIV is an unofficial third-party tool, provided "as is" without warran
 - Banner and icon made from an in-game screenshot by [divinepleroma](https://github.com/divinepleroma).
 - README layout inspired by [Gale](https://github.com/Kesomannen/gale).
 
-FINAL FANTASY XIV © SQUARE ENIX. FINAL FANTASY is a registered trademark of Square Enix Holdings Co., Ltd.
-
 ---
 
 Released under the [MIT licence](LICENSE), which covers only the files in this project.
+
+##### FINAL FANTASY XIV © SQUARE ENIX CO., LTD. All Rights Reserved. OpenShade XIV is not affiliated with SQUARE ENIX CO., LTD. in any way.

@@ -153,7 +153,6 @@ Continue? [Y/N]:
 - [ReShade](https://github.com/crosire/reshade) by crosire.
 - [GPosingway](https://github.com/gposingway/gposingway) and its contributors. Each shader and preset collection it contains has its own licence; see its [shader licences](https://github.com/gposingway/gposingway/blob/main/md/shader_licenses.md).
 - Banner and icon made from an in-game screenshot by [divinepleroma](https://github.com/divinepleroma).
-- README layout inspired by [Gale](https://github.com/Kesomannen/gale).
 
 ---
 

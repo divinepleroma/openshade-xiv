@@ -27,6 +27,10 @@
     Changes nothing. Looks at an existing install and reports whether it is
     complete and whether ReShade has started with the game.
 
+.PARAMETER Menu
+    Shows a menu to choose Install, Preview, Check or Uninstall. This is what
+    OpenShade.cmd runs.
+
 .PARAMETER GamePath
     Skip the search and use this game folder (the one with ffxiv_dx11.exe).
 
@@ -38,6 +42,7 @@ param(
     [switch]$DryRun,
     [switch]$Uninstall,
     [switch]$Check,
+    [switch]$Menu,
     [string]$GamePath,
     [string]$ManifestPath,
     [string]$CacheDir,
@@ -53,7 +58,7 @@ $ErrorActionPreference = 'Stop'
 
 $ToolTitle    = 'OpenShade XIV'
 $ToolName     = 'openshade-xiv'             # used for folder names
-$ToolVersion  = '0.3.3'
+$ToolVersion  = '0.4.0'
 $GameExe      = 'ffxiv_dx11.exe'
 $RecordFolder = '.openshade-xiv'            # created inside the game folder
 $StopPrefix   = 'OPENSHADE-STOP: '
@@ -870,12 +875,12 @@ function Get-InstallChecks {
     function Add-Check { param($List, [string]$Name, [bool]$Ok, [string]$Advice = '')
         $List.Add([pscustomobject]@{ Name = $Name; Ok = $Ok; Advice = $Advice })
     }
-    $rerun = 'Run Install.cmd to repair.'
-    $antivirus = 'The file may have been removed or blocked by security software. Run Install.cmd again; if it is ' +
+    $rerun = 'Run OpenShade.cmd and choose Install to repair.'
+    $antivirus = 'The file may have been removed or blocked by security software. Run the install again; if it is ' +
                  'removed again, add the game folder as an exception.'
 
     Add-Check $checks "Game executable present ($GameExe)" (Test-Path -LiteralPath (Join-Path $Game $GameExe) -PathType Leaf) `
-        'The game folder has moved or been removed. Run Install.cmd and select the new location.'
+        'The game folder has moved or been removed. Run the install again and select the new location.'
 
     $reshadeFile = [string](Get-Prop $Record 'reshadeFile' 'dxgi.dll')
     $dll = Join-Path $Game $reshadeFile
@@ -949,8 +954,10 @@ function Start-Install {
     $steps = 6
 
     Say ''
-    Say "  $ToolTitle $ToolVersion" 'White'
-    Say '  ReShade + GPosingway setup for FINAL FANTASY XIV'
+    if (-not $Menu) {
+        Say "  $ToolTitle $ToolVersion" 'White'
+        Say '  ReShade + GPosingway setup for FINAL FANTASY XIV'
+    }
     if ($DryRun) { Say '  PREVIEW MODE: nothing is downloaded or changed.' 'Magenta' }
     Say-Ok 'System check passed.'
     Say ''
@@ -1045,7 +1052,7 @@ function Start-Install {
     if (-not $DryRun) {
         if (-not (Test-CanWrite $game)) {
             Stop-Here ('Cannot write to the game folder. This is common when the game is in "Program Files" or the ' +
-                       'folder is protected by security software. Right-click Install.cmd, choose "Run as administrator", ' +
+                       'folder is protected by security software. Right-click OpenShade.cmd, choose "Run as administrator", ' +
                        'and try again. No changes were made.')
         }
         try {
@@ -1111,7 +1118,7 @@ function Start-Install {
     Say ''
     if ($DryRun) {
         Say-Preview 'Preview complete. Nothing was downloaded or changed.'
-        Say '  Run Install.cmd to install.'
+        Say '  To install, run OpenShade.cmd and choose Install.'
         return
     }
     if (-not (Ask-YesNo '  Proceed?')) { Stop-Here 'No changes were made.' }
@@ -1181,7 +1188,7 @@ function Start-Install {
         $script:ExitCode = 1
         Say ''
         Say "  $failed check(s) failed. The install is incomplete." 'Red'
-        Say '  Run Install.cmd to repair, or Uninstall.cmd to restore the previous state.'
+        Say '  Run OpenShade.cmd and choose Install to repair, or Uninstall to restore the previous state.'
         Say "  Log: $LogPath"
         return
     }
@@ -1196,9 +1203,9 @@ function Start-Install {
     Say '    2. Shift+F2 opens the ReShade menu. Select a preset from the list at the top.'
     Say '    3. Shift+F3 toggles all effects.'
     Say ''
-    Say '  No banner: run Check.cmd.'
+    Say '  No banner: run OpenShade.cmd and choose Check.'
     Say '  Troubleshooting: https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md'
-    Say '  Uninstall: run Uninstall.cmd.'
+    Say '  To uninstall: run OpenShade.cmd and choose Uninstall.'
     Say "  Log: $LogPath"
     Say ''
     if (Ask-YesNo -DefaultNo -Question ("  Delete the downloaded pack ({0})? It is no longer needed." -f (Format-Size $m.gposingway.size))) {
@@ -1232,7 +1239,7 @@ function Start-Check {
         }
         if ($logInfo) { Say "    ReShade last started with the game: $($logInfo.When.ToString('yyyy-MM-dd HH:mm')) (version $($logInfo.Version))" }
         Say ''
-        Say '  Run Install.cmd to install.'
+        Say '  To install, run OpenShade.cmd and choose Install.'
         return
     }
 
@@ -1305,7 +1312,7 @@ function Start-Uninstall {
     if ($DryRun) { Say-Preview 'Preview complete. Nothing was changed.'; return }
     if (-not (Ask-YesNo '  Proceed?')) { Stop-Here 'No changes were made.' }
     if (-not (Test-CanWrite $game)) {
-        Stop-Here ('Cannot write to the game folder. Right-click Uninstall.cmd, choose "Run as administrator", ' +
+        Stop-Here ('Cannot write to the game folder. Right-click OpenShade.cmd, choose "Run as administrator", ' +
                    'and try again. No changes were made.')
     }
 
@@ -1340,6 +1347,34 @@ function Start-Uninstall {
 }
 
 # ---------------------------------------------------------------------------
+#  Menu (what OpenShade.cmd opens)
+# ---------------------------------------------------------------------------
+
+# Returns 'install', 'preview', 'check', 'uninstall' or 'quit'.
+function Read-MenuChoice {
+    Say ''
+    Say "  $ToolTitle $ToolVersion" 'White'
+    Say '  ReShade + GPosingway setup for FINAL FANTASY XIV'
+    Say ''
+    Say '    1. Install or repair'
+    Say '    2. Preview (changes nothing)'
+    Say '    3. Check an existing install'
+    Say '    4. Uninstall'
+    Say '    Q. Quit'
+    Say ''
+    for ($try = 1; $try -le 5; $try++) {
+        $answer = ([string](Read-Host '  Choose [1-4, Q]')).Trim()
+        Write-Log "MENU -> $answer"
+        if ($answer -eq '1') { return 'install' }
+        if ($answer -eq '2') { return 'preview' }
+        if ($answer -eq '3') { return 'check' }
+        if ($answer -eq '4') { return 'uninstall' }
+        if ($answer -match '^q') { return 'quit' }
+    }
+    return 'quit'
+}
+
+# ---------------------------------------------------------------------------
 #  Start
 # ---------------------------------------------------------------------------
 
@@ -1347,7 +1382,16 @@ try {
     Write-Log "=== $ToolName $ToolVersion started (DryRun=$DryRun, Uninstall=$Uninstall, Check=$Check) ==="
     Test-Environment
     Enter-SingleInstance
-    if ($Check) { Start-Check } elseif ($Uninstall) { Start-Uninstall } else { Start-Install }
+    if ($Menu) {
+        $choice = Read-MenuChoice
+        if ($choice -eq 'install')       { Start-Install }
+        elseif ($choice -eq 'preview')   { $DryRun = $true; Start-Install }
+        elseif ($choice -eq 'check')     { Start-Check }
+        elseif ($choice -eq 'uninstall') { Start-Uninstall }
+    }
+    elseif ($Check)     { Start-Check }
+    elseif ($Uninstall) { Start-Uninstall }
+    else                { Start-Install }
 } catch {
     $message = [string]$_.Exception.Message
     Write-Host ''
@@ -1357,8 +1401,8 @@ try {
         Say '  Unexpected error. Stopped.' 'Red'
         Say "  $message" 'Red'
         if ($script:ChangesStarted) {
-            Say '  The game folder may be partly changed. Run Uninstall.cmd to restore it,'
-            Say '  or Install.cmd to try again.'
+            Say '  The game folder may be partly changed. Run OpenShade.cmd and choose'
+            Say '  Uninstall to restore it, or Install to try again.'
         } else {
             Say '  No changes were made to the game folder.'
         }

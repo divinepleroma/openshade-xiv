@@ -1,5 +1,6 @@
 ![OpenShade XIV](images/banner.jpg)
 
+[![Tests](https://github.com/divinepleroma/openshade-xiv/actions/workflows/tests.yml/badge.svg)](https://github.com/divinepleroma/openshade-xiv/actions/workflows/tests.yml)
 [![License](https://img.shields.io/github/license/divinepleroma/openshade-xiv?style=flat)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-4c8eda?style=flat)
 [![ReShade](https://img.shields.io/badge/ReShade-6.8.0-8a5cf5?style=flat)](https://github.com/crosire/reshade)
@@ -13,8 +14,8 @@ A safe, auditable installer for [ReShade](https://github.com/crosire/reshade) an
 - **Official sources only.** ReShade and GPosingway are fetched from their own download pages. Nothing is rehosted here.
 - **Nothing hidden.** One script you can open and read. No compiled program, no background process, no auto-update.
 - **Finds your game.** Custom install folders, Steam libraries and XIVLauncher installs are detected without scanning your drives.
-- **Reversible.** Existing files are backed up first, and `Uninstall.cmd` puts them back.
-- **Checks its own work.** The install is verified when it finishes, and `Check.cmd` can repeat that at any time.
+- **Reversible.** Existing files are backed up first, and **Uninstall** puts them back.
+- **Checks its own work.** The install is verified when it finishes, and **Check** can repeat that at any time.
 
 ## Installation
 
@@ -24,7 +25,7 @@ A safe, auditable installer for [ReShade](https://github.com/crosire/reshade) an
 1. Click **Code** > **Download ZIP**, or use the [direct download](https://github.com/divinepleroma/openshade-xiv/archive/refs/heads/main.zip).
 2. Right-click the zip and choose **Extract All**. Do not run it from inside the zip.
 3. Close the game.
-4. Open the extracted folder and run **`Install.cmd`**.
+4. Open the extracted folder, run **`OpenShade.cmd`**, and choose **Install**.
 
 In game, **Shift+F2** opens the ReShade menu and **Shift+F3** toggles effects.
 
@@ -32,7 +33,7 @@ In game, **Shift+F2** opens the ReShade menu and **Shift+F3** toggles effects.
 > Windows may ask for confirmation before running a downloaded script. OpenShade XIV is plain text, so you can open `OpenShade.ps1` in Notepad and read it first.
 
 > [!TIP]
-> Not sure yet? Run `Preview.cmd`. It walks through every step and changes nothing.
+> Not sure yet? Choose **Preview** in the menu. It walks through every step and changes nothing.
 
 <details>
   <summary>
@@ -47,12 +48,14 @@ In game, **Shift+F2** opens the ReShade menu and **Shift+F3** toggles effects.
 
 ## Usage
 
-| File | Purpose |
+`OpenShade.cmd` opens a menu:
+
+| Option | Purpose |
 |---|---|
-| `Preview.cmd` | Shows every step. Downloads and changes nothing. |
-| `Install.cmd` | Installs, then verifies the result. Also repairs an existing install. |
-| `Check.cmd` | Read-only. Reports whether the install is complete and whether ReShade has started with the game. |
-| `Uninstall.cmd` | Removes what was installed and restores what was backed up. |
+| **Install** | Installs, then verifies the result. Also repairs an existing install. |
+| **Preview** | Shows every step. Downloads and changes nothing. |
+| **Check** | Read-only. Reports whether the install is complete and whether ReShade has started with the game. |
+| **Uninstall** | Removes what was installed and restores what was backed up. |
 
 ## What gets installed
 
@@ -66,8 +69,17 @@ Versions, download addresses and SHA-256 checksums are pinned in [`manifest.json
 ## Preview
 
 ```text
-OpenShade XIV 0.3.3
+OpenShade XIV 0.4.0
 ReShade + GPosingway setup for FINAL FANTASY XIV
+
+  1. Install or repair
+  2. Preview (changes nothing)
+  3. Check an existing install
+  4. Uninstall
+  Q. Quit
+
+Choose [1-4, Q]: 1
+
 [ok] System check passed.
 
 Installs:
@@ -128,9 +140,9 @@ Continue? [Y/N]:
     <b>Troubleshooting</b>
   </summary>
 
-  - **"Cannot write to the game folder".** Right-click `Install.cmd` and choose **Run as administrator**. This is common when the game is in `Program Files`.
+  - **"Cannot write to the game folder".** Right-click `OpenShade.cmd` and choose **Run as administrator**. This is common when the game is in `Program Files`.
   - **The script is blocked from running.** Some managed work or school PCs do not allow downloaded scripts. The tool cannot run there.
-  - **No ReShade banner in game.** Run `Check.cmd`, then see GPosingway's [troubleshooting guide](https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md).
+  - **No ReShade banner in game.** Choose **Check** in the menu, then see GPosingway's [troubleshooting guide](https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md).
 </details>
 
 <details>
@@ -143,9 +155,25 @@ Continue? [Y/N]:
   1. Set the new `version`, `url`, `fileName` and `size`.
   2. Set `sha256` to the SHA-256 of the downloaded file. For GPosingway, GitHub shows this as the asset digest on the release page.
   3. For ReShade, also set `dllSha256` to the SHA-256 of `ReShade64.dll` inside the setup file.
-  4. Run `Preview.cmd`, then a full install into a test folder.
+  4. Run the tests, then a full install into a test folder.
 
   Do not point the manifest at a "latest" address. A pinned version with a pinned checksum is what makes the download verifiable.
+</details>
+
+<details>
+  <summary>
+    <b>Development</b>
+  </summary>
+
+  The tests run the tool against dummy game folders with stand-in downloads, so they never touch a real install. They need Git Bash and Python, and also run on every push.
+
+  ```bash
+  bash tests/run_tests.sh powershell
+  bash tests/scenarios.sh powershell
+  bash tests/failsafe.sh powershell
+  ```
+
+  Use `pwsh` in place of `powershell` to test under PowerShell 7.
 </details>
 
 ## Credits

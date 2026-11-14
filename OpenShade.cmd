@@ -1,5 +1,5 @@
 @echo off
-rem OpenShade XIV - removes what was installed and restores what was backed up.
+rem OpenShade XIV - opens the menu (Install, Preview, Check, Uninstall).
 rem Runs OpenShade.ps1 (in this folder) in Windows PowerShell.
 rem "-ExecutionPolicy Bypass" applies to this one window only and changes no
 rem system setting.
@@ -11,7 +11,7 @@ set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
 if not exist "%PS%" set "PS=powershell.exe"
 if not exist "%~dp0OpenShade.ps1" goto :notunzipped
 if not exist "%~dp0manifest.json" goto :notunzipped
-"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0OpenShade.ps1" -Uninstall
+"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%~dp0OpenShade.ps1" -Menu
 echo.
 pause
 exit /b

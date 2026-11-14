@@ -10,3 +10,8 @@
 # Images are binary.
 *.png binary
 *.jpg binary
+
+# Shell and Python test scripts must keep Unix line endings.
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf

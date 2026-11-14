@@ -1,0 +1,44 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.shell }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Syntax and encoding check
+        shell: pwsh
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD\OpenShade.ps1", [ref]$null, [ref]$errors)
+          if ($errors.Count) { $errors | ForEach-Object { Write-Host $_ }; exit 1 }
+          if ((Get-Content OpenShade.ps1 -Raw) -match '[^\x00-\x7F]') {
+            Write-Host 'OpenShade.ps1 must stay ASCII-only so Windows PowerShell 5.1 reads it correctly.'
+            exit 1
+          }
+          Get-Content manifest.json -Raw | ConvertFrom-Json | Out-Null
+
+      - name: Install, uninstall and refused packages
+        shell: bash
+        run: bash tests/run_tests.sh ${{ matrix.shell }}
+
+      - name: Player scenarios
+        shell: bash
+        run: bash tests/scenarios.sh ${{ matrix.shell }}
+
+      - name: Failsafes
+        shell: bash
+        run: bash tests/failsafe.sh ${{ matrix.shell }}

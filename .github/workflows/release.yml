@@ -1,0 +1,73 @@
+name: Release
+
+# Runs when a version tag such as v0.4.0 is pushed. Builds the download zip,
+# records where it was built from (build provenance), and publishes a release.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the tag matches the script version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME.TrimStart('v')
+          $line = Get-Content OpenShade.ps1 | Where-Object { $_ -like '$ToolVersion*=*' } | Select-Object -First 1
+          $version = ($line -split "'")[1]
+          if ($tag -ne $version) {
+            Write-Host "Tag is $tag but OpenShade.ps1 says $version."
+            exit 1
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Run the tests
+        shell: bash
+        run: |
+          bash tests/run_tests.sh powershell
+          bash tests/scenarios.sh powershell
+          bash tests/failsafe.sh powershell
+
+      - name: Build the zip
+        id: build
+        shell: pwsh
+        run: |
+          $name = "OpenShade-XIV-${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory -Path "dist/$name" -Force | Out-Null
+          Copy-Item OpenShade.cmd, OpenShade.ps1, manifest.json, README.md, LICENSE -Destination "dist/$name"
+          Compress-Archive -Path "dist/$name" -DestinationPath "dist/$name.zip"
+          $hash = (Get-FileHash "dist/$name.zip" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name.zip" | Set-Content "dist/$name.zip.sha256" -Encoding ascii
+          "name=$name" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/${{ steps.build.outputs.name }}.zip
+
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $name = '${{ steps.build.outputs.name }}'
+          $notes = @(
+            "Download **$name.zip**, extract it, and run ``OpenShade.cmd``.",
+            '',
+            "SHA-256: ``${{ steps.build.outputs.sha256 }}``",
+            '',
+            'To confirm this zip was built from this repository:',
+            '',
+            "``gh attestation verify $name.zip -R ${{ github.repository }}``"
+          ) -join "`n"
+          gh release create $env:GITHUB_REF_NAME "dist/$name.zip" "dist/$name.zip.sha256" --title "OpenShade XIV ${{ steps.version.outputs.version }}" --notes $notes --verify-tag

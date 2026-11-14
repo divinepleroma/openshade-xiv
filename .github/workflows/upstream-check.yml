@@ -1,0 +1,49 @@
+name: Upstream check
+
+# Once a week, compares the versions pinned in manifest.json with the latest
+# ReShade and GPosingway versions, and opens an issue if either has moved on.
+# It never changes the manifest: a person updates versions and checksums.
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare pinned and latest versions
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $m = Get-Content manifest.json -Raw | ConvertFrom-Json
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; 'User-Agent' = 'openshade-upstream-check' }
+          $gposingway = Invoke-RestMethod 'https://api.github.com/repos/gposingway/gposingway/releases/latest' -Headers $headers
+          $tags = Invoke-RestMethod 'https://api.github.com/repos/crosire/reshade/tags?per_page=1' -Headers $headers
+          $reshade = ([string]$tags[0].name).TrimStart('v')
+
+          $notes = @()
+          if ($gposingway.tag_name -ne $m.gposingway.releaseTag) {
+            $notes += "- GPosingway: manifest pins ``$($m.gposingway.releaseTag)``, the latest release is ``$($gposingway.tag_name)``."
+          }
+          if ($reshade -ne $m.reshade.version) {
+            $notes += "- ReShade: manifest pins ``$($m.reshade.version)``, the latest tag is ``$reshade``."
+          }
+          if (-not $notes) { Write-Host 'manifest.json is up to date.'; exit 0 }
+
+          $title = 'Upstream update available'
+          $open = gh issue list --state open --search "$title in:title" --json number --jq 'length'
+          if ($open -ne '0') { Write-Host 'An issue is already open.'; exit 0 }
+
+          $body = (@('A newer upstream version is available:', '') + $notes + @(
+            '',
+            'See "Updating the manifest" in the README. Check the new version works, then update the version, address, size and SHA-256 checksums by hand.'
+          )) -join "`n"
+          gh issue create --title $title --body $body

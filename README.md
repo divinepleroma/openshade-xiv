@@ -1,6 +1,7 @@
 ![OpenShade XIV](images/banner.jpg)
 
 [![Tests](https://github.com/divinepleroma/openshade-xiv/actions/workflows/tests.yml/badge.svg)](https://github.com/divinepleroma/openshade-xiv/actions/workflows/tests.yml)
+[![Release](https://img.shields.io/github/v/release/divinepleroma/openshade-xiv?style=flat)](https://github.com/divinepleroma/openshade-xiv/releases/latest)
 [![License](https://img.shields.io/github/license/divinepleroma/openshade-xiv?style=flat)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-4c8eda?style=flat)
 [![ReShade](https://img.shields.io/badge/ReShade-6.8.0-8a5cf5?style=flat)](https://github.com/crosire/reshade)
@@ -22,7 +23,7 @@ A safe, auditable installer for [ReShade](https://github.com/crosire/reshade) an
 > [!WARNING]
 > The only official source for OpenShade XIV is this GitHub repository.
 
-1. Click **Code** > **Download ZIP**, or use the [direct download](https://github.com/divinepleroma/openshade-xiv/archive/refs/heads/main.zip).
+1. Download the zip from the [latest release](https://github.com/divinepleroma/openshade-xiv/releases/latest).
 2. Right-click the zip and choose **Extract All**. Do not run it from inside the zip.
 3. Close the game.
 4. Open the extracted folder, run **`OpenShade.cmd`**, and choose **Install**.

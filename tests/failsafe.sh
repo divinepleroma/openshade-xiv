@@ -49,7 +49,7 @@ pristine() { [ "$(ls -A "$GAME" | tr '\n' ' ')" = "ffxiv_dx11.exe ffxivgame.ver 
 
 echo "== $SH: self-check and incomplete game folder =="
 new_env f1; rm -rf "$GAME/sqpack" "$GAME/ffxivgame.ver"; go 'y\nn\n' -GamePath "$GAMEW"
-check "self-check line shown" "grep -q 'System check passed' '$OUT'"
+check "self-check passes" "grep -q 'Installs:' '$OUT' && ! grep -q 'System check failed' '$OUT'"
 check "warns the folder looks incomplete" "grep -q 'not the rest of the game files' '$OUT'"
 check "answering No stops with no changes" "[ $RC = 1 ] && [ \"\$(ls -A '$GAME')\" = 'ffxiv_dx11.exe' ]"
 
@@ -150,7 +150,7 @@ dl() { # dl <name> <mode> <answers>
   MANW_SAVE="$MANW"; MANW="$(cygpath -w "$E/manifest.json")"; go "$3" -GamePath "$GAMEW"; MANW="$MANW_SAVE"
 }
 dl f9a ok 'y\ny\nn\n'
-check "downloads, verifies and installs" "[ $RC = 0 ] && grep -q 'Download verified' '$OUT' && grep -q 'All checks passed' '$OUT'"
+check "downloads, verifies and installs" "[ $RC = 0 ] && grep -q 'Checksum verified' '$OUT' && grep -q 'All checks passed' '$OUT'"
 dl f9b 404 'y\ny\n'
 check "missing file: explains and changes nothing" "[ $RC = 1 ] && grep -q 'returned an error (404)' '$OUT' && pristine"
 dl f9c size 'y\ny\n'

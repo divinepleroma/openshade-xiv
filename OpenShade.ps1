@@ -1,41 +1,37 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    OpenShade XIV: installs ReShade and GPosingway for FINAL FANTASY XIV.
+    Installs ReShade and GPosingway for FINAL FANTASY XIV.
 
 .DESCRIPTION
-    Installs two things into the FINAL FANTASY XIV game folder:
-
-      1. ReShade      - post-processing injector (https://github.com/crosire/reshade)
-      2. GPosingway   - community shader and preset pack for FFXIV
-                        (https://github.com/gposingway/gposingway)
-
-    Both are downloaded from their official sources and verified against the
-    SHA-256 checksums in manifest.json. Existing files are backed up before
-    being replaced, and the result is verified after installation.
-
-    No background program is installed, and nothing is downloaded or run
-    other than what manifest.json lists. The whole tool is this one file.
+    Downloads ReShade (https://github.com/crosire/reshade) and GPosingway
+    (https://github.com/gposingway/gposingway) from their official sources,
+    verifies them against the SHA-256 checksums in manifest.json, and installs
+    them into the game folder. Existing files are backed up first.
 
 .PARAMETER DryRun
-    Preview mode. Explains every step but downloads and changes nothing.
+    Shows every step. Downloads and changes nothing.
 
 .PARAMETER Uninstall
-    Removes what this tool installed and restores what it backed up.
+    Removes what was installed and restores what was backed up.
 
 .PARAMETER Check
-    Changes nothing. Looks at an existing install and reports whether it is
-    complete and whether ReShade has started with the game.
+    Read-only. Reports whether an existing install is complete.
 
 .PARAMETER Menu
-    Shows a menu to choose Install, Preview, Check or Uninstall. This is what
-    OpenShade.cmd runs.
+    Shows the menu. Used by OpenShade.cmd.
 
 .PARAMETER GamePath
-    Skip the search and use this game folder (the one with ffxiv_dx11.exe).
+    Game folder (the one that contains ffxiv_dx11.exe). Skips detection.
+
+.PARAMETER ManifestPath
+    Manifest file to use instead of manifest.json. Used by the tests.
+
+.PARAMETER CacheDir
+    Download folder to use instead of the default. Used by the tests.
 
 .PARAMETER AssumeYes
-    Answer "yes" to every question. Meant for testing, not for normal use.
+    Answers yes to every prompt. Used by the tests.
 #>
 [CmdletBinding()]
 param(
@@ -57,25 +53,23 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 
 $ToolTitle    = 'OpenShade XIV'
-$ToolName     = 'openshade-xiv'             # used for folder names
-$ToolVersion  = '0.4.0'
+$ToolName     = 'openshade-xiv'             # folder name under %LOCALAPPDATA%
+$ToolVersion  = '0.4.1'
 $GameExe      = 'ffxiv_dx11.exe'
 $RecordFolder = '.openshade-xiv'            # created inside the game folder
 $StopPrefix   = 'OPENSHADE-STOP: '
 
-# File types a shader pack has no reason to contain. If the pack ever
-# includes one of these, the tool refuses to unpack it.
+# A pack that contains any of these file types is refused.
 $BlockedExtensions = @(
     '.exe', '.dll', '.com', '.scr', '.msi', '.bat', '.cmd', '.ps1', '.psm1',
     '.vbs', '.js', '.jse', '.wsf', '.hta', '.lnk', '.reg', '.sys', '.jar',
     '.addon', '.addon32', '.addon64'
 )
 
-# Other file names ReShade (or GShade) can be installed under.
+# Other file names ReShade or GShade can be installed as.
 $OtherInjectorNames = @('d3d11.dll', 'd3d9.dll', 'dinput8.dll', 'opengl32.dll')
 
-# Windows refuses very long file paths in many programs, the game included.
-$MaxPathLength = 259
+$MaxPathLength = 259   # MAX_PATH minus the terminator
 
 $LocalBase = $env:LOCALAPPDATA
 if (-not $LocalBase) { $LocalBase = $env:TEMP }
@@ -85,11 +79,11 @@ if (-not $CacheDir) { $CacheDir = Join-Path $AppData 'downloads' }
 $LogPath = Join-Path $AppData 'log.txt'
 
 $script:ExitCode       = 0
-$script:ChangesStarted = $false   # true once the game folder is being changed
+$script:ChangesStarted = $false   # set once the game folder is modified
 $script:Mutex          = $null
 
 # ---------------------------------------------------------------------------
-#  Small helpers for talking to the player
+#  Output and prompts
 # ---------------------------------------------------------------------------
 
 function Write-Log {
@@ -128,16 +122,13 @@ function Stop-Here {
     throw ($StopPrefix + $Text)
 }
 
-# True when a person is typing answers in a normal window (not a test, and
-# not input piped in from a file).
+# False with -AssumeYes or when input is redirected.
 function Test-Interactive {
     if ($AssumeYes) { return $false }
     try { return (-not [Console]::IsInputRedirected) } catch { return $false }
 }
 
-# Asks a yes/no question. If it gets no usable answer five times in a row
-# (for example the window lost its keyboard input), it gives up safely:
-# "no" when -DefaultNo is set, otherwise it stops.
+# After five unusable answers: returns $false with -DefaultNo, otherwise stops.
 function Ask-YesNo {
     param([string]$Question, [switch]$DefaultNo)
     if ($AssumeYes) { Write-Log "ASK (auto-yes): $Question"; return $true }
@@ -164,10 +155,8 @@ function Format-Size {
     return ('{0:N0} KB' -f ($Bytes / 1KB))
 }
 
-# The SHA-256 fingerprint of a file, as 64 hex characters. This uses Windows'
-# own hashing directly instead of PowerShell's Get-FileHash command, because
-# that command fails to load when Windows PowerShell is started from inside
-# a PowerShell 7 window.
+# Uses .NET directly. Get-FileHash fails to load when Windows PowerShell is
+# started from a PowerShell 7 session.
 function Get-Sha256 {
     param([string]$Path)
     $sha = $null
@@ -178,7 +167,7 @@ function Get-Sha256 {
     finally { $stream.Dispose(); $sha.Dispose() }
 }
 
-# Reads a property that older install records may not have.
+# Property value, or $Default when absent (older install records).
 function Get-Prop {
     param($Object, [string]$Name, $Default = $null)
     if ($null -eq $Object) { return $Default }
@@ -188,15 +177,12 @@ function Get-Prop {
 }
 
 # ---------------------------------------------------------------------------
-#  Checking this PC can run the tool (before anything else happens)
+#  Environment checks
 # ---------------------------------------------------------------------------
 
-# Runs a few harmless self-tests of the exact features used later: file
-# fingerprints, zip archives and secure downloads. If any of them does not
-# behave as expected on this PC, the tool stops before touching anything.
+# Self-tests for hashing, zip and TLS. Stops before anything is changed.
 function Test-Environment {
-    # These first checks use only basic commands so they still work on
-    # locked-down PCs, where the point is to explain why it can't continue.
+    # Checked first: these work in constrained language mode.
     if ($env:OS -ne 'Windows_NT') { Stop-Here 'This tool requires Windows.' }
     $mode = [string]$ExecutionContext.SessionState.LanguageMode
     if ($mode -ne 'FullLanguage') {
@@ -209,7 +195,7 @@ function Test-Environment {
 
     $failed = New-Object System.Collections.Generic.List[string]
 
-    # 1. Can it write to its own working folder and fingerprint a file?
+    # Working folder is writable; hash of a known value
     $probe = $null
     try {
         if (-not (Test-Path -LiteralPath $AppData)) { New-Item -ItemType Directory -Path $AppData -Force | Out-Null }
@@ -220,7 +206,7 @@ function Test-Environment {
     } catch { $failed.Add("file checksums ($($_.Exception.Message))") }
     finally { if ($probe) { Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue } }
 
-    # 2. Can it create and read a zip archive?
+    # Zip round trip
     try {
         Add-Type -AssemblyName System.IO.Compression
         Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -235,7 +221,7 @@ function Test-Environment {
         if ($text -ne 'hello') { throw 'archive did not read back correctly' }
     } catch { $failed.Add("zip archives ($($_.Exception.Message))") }
 
-    # 3. Are secure downloads available?
+    # TLS 1.2 and HttpClient
     try {
         Add-Type -AssemblyName System.Net.Http
         [System.Net.ServicePointManager]::SecurityProtocol =
@@ -257,7 +243,6 @@ function Test-Environment {
     }
 }
 
-# Makes sure only one copy of the tool runs at a time.
 function Enter-SingleInstance {
     try {
         $created = $false
@@ -272,12 +257,11 @@ function Enter-SingleInstance {
 }
 
 # ---------------------------------------------------------------------------
-#  Finding the game
+#  Game detection
 # ---------------------------------------------------------------------------
 
-# Returns the folder that contains ffxiv_dx11.exe, or $null. Accepts the
-# game folder itself, the folder above it, the "boot" folder next to it,
-# or the path of a program inside any of those.
+# Returns the folder that contains ffxiv_dx11.exe, or $null. Accepts that
+# folder, its parent, the sibling "boot" folder, or an .exe path in any of them.
 function Resolve-GameFolder {
     param([string]$Path)
     if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
@@ -299,7 +283,6 @@ function Resolve-GameFolder {
     return $null
 }
 
-# A few facts about a game folder, used to describe it and to sanity-check it.
 function Get-GameInfo {
     param([string]$Folder)
     $version = ''
@@ -324,15 +307,14 @@ function Format-GameLine {
     return ('{0}   ({1})' -f $Folder, ($bits -join ', '))
 }
 
-# Looks for the game. Every source here is read-only and already on this PC:
-# nothing is scanned across your drives, and nothing is changed.
+# Read-only lookups of existing records. No drive scan.
 function Find-GameFolders {
     $places = New-Object System.Collections.Generic.List[object]
     function Add-Place { param($List, [string]$Path, [string]$Source)
         if ($Path) { $List.Add([pscustomobject]@{ Path = $Path; Source = $Source }) }
     }
 
-    # 1. If the game is running right now, Windows knows exactly where it is.
+    # Running process
     try {
         foreach ($proc in @(Get-Process -Name 'ffxiv_dx11' -ErrorAction SilentlyContinue)) {
             $procPath = $null
@@ -341,7 +323,7 @@ function Find-GameFolders {
         }
     } catch { }
 
-    # 2. XIVLauncher remembers where the game is.
+    # XIVLauncher config
     try {
         if ($env:APPDATA) {
             $cfg = Join-Path $env:APPDATA 'XIVLauncher\launcherConfigV3.json'
@@ -353,7 +335,7 @@ function Find-GameFolders {
         }
     } catch { }
 
-    # 3. The official installer registers itself with Windows.
+    # Uninstall registry entries
     $uninstallKeys = @(
         'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
         'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
@@ -370,7 +352,7 @@ function Find-GameFolders {
         } catch { }
     }
 
-    # 4. Steam libraries (39210 is FFXIV, 312060 is the free trial).
+    # Steam libraries (39210: full game, 312060: free trial)
     try {
         $steamRoots = New-Object System.Collections.Generic.List[string]
         $steam = Get-ItemProperty -Path 'HKCU:\Software\Valve\Steam' -ErrorAction SilentlyContinue
@@ -404,7 +386,7 @@ function Find-GameFolders {
         }
     } catch { }
 
-    # 5. Desktop and Start menu shortcuts named after the game.
+    # Desktop and Start menu shortcuts
     try {
         $shortcutFolders = @(
             @{ Path = [Environment]::GetFolderPath('Desktop');                Deep = $false },
@@ -419,13 +401,13 @@ function Find-GameFolders {
                        Where-Object { $_.Name -match 'FINAL FANTASY XIV|FFXIV' })
             foreach ($link in $links) {
                 if (-not $shell) { $shell = New-Object -ComObject WScript.Shell }
-                # CreateShortcut on an existing shortcut only reads it.
+                # CreateShortcut on an existing .lnk only reads it.
                 Add-Place $places ([string]$shell.CreateShortcut($link.FullName).TargetPath) 'shortcut'
             }
         }
     } catch { }
 
-    # 6. Windows keeps a list of programs you have run. Look only for FFXIV's.
+    # MuiCache and Compatibility Assistant entries for FFXIV executables
     $historyKeys = @(
         'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\MuiCache',
         'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Compatibility Assistant\Store'
@@ -440,7 +422,7 @@ function Find-GameFolders {
         } catch { }
     }
 
-    # 7. Default install folders on every drive.
+    # Default install folders on fixed drives
     try {
         foreach ($drive in [System.IO.DriveInfo]::GetDrives()) {
             if ($drive.DriveType -ne 'Fixed' -or -not $drive.IsReady) { continue }
@@ -463,8 +445,7 @@ function Find-GameFolders {
     return $found.ToArray()
 }
 
-# Opens the normal Windows "pick a file" window so the player can point at
-# ffxiv_dx11.exe instead of typing a path. Returns $null if cancelled.
+# File dialog for ffxiv_dx11.exe. Returns $null if cancelled or unavailable.
 function Show-GamePicker {
     $owner = $null; $dialog = $null
     try {
@@ -489,10 +470,10 @@ function Select-GameFolder {
     if ($GamePath) {
         $resolved = Resolve-GameFolder $GamePath
         if (-not $resolved) { Stop-Here "$GameExe not found in: $GamePath" }
+        Say-Ok "Game folder: $resolved"
         return $resolved
     }
 
-    Say '  Searching for the game (read-only)...'
     $found = @(Find-GameFolders)
 
     if ($found.Count -eq 1) {
@@ -530,13 +511,12 @@ function Select-GameFolder {
         if ($typed -match '^\s*q\s*$') { Stop-Here 'No changes were made.' }
         if (-not $typed -and $canBrowse) { $typed = Show-GamePicker }
         $resolved = Resolve-GameFolder $typed
-        if ($resolved) { return $resolved }
+        if ($resolved) { Say-Ok "Game folder: $resolved"; return $resolved }
         Say-Note "$GameExe not found there."
     }
     Stop-Here 'Game folder not found. No changes were made.'
 }
 
-# A last sanity check on the chosen folder before anything is planned for it.
 function Confirm-GameFolder {
     param([string]$Game)
     $info = Get-GameInfo $Game
@@ -547,7 +527,7 @@ function Confirm-GameFolder {
 }
 
 # ---------------------------------------------------------------------------
-#  Downloading and checking files
+#  Downloads
 # ---------------------------------------------------------------------------
 
 function Test-Fingerprint {
@@ -608,17 +588,16 @@ function Save-Download {
     Move-Item -LiteralPath $part -Destination $Destination -Force
 }
 
-# Returns the path of a downloaded file whose fingerprint matches the
-# manifest. Reuses an earlier download if it is still intact.
+# Returns the path of a download that matches the manifest checksum.
+# Reuses a cached copy if it still matches.
 function Get-CheckedDownload {
     param($Asset)
     if (-not (Test-Path -LiteralPath $CacheDir)) { New-Item -ItemType Directory -Path $CacheDir -Force | Out-Null }
     $target = Join-Path $CacheDir $Asset.fileName
 
     if (Test-Path -LiteralPath $target) {
-        Say '  Already downloaded. Verifying checksum...'
         if (Test-Fingerprint $target $Asset.sha256) {
-            Say-Ok 'Checksum verified. Download skipped.'
+            Say-Ok 'Already downloaded. Checksum verified.'
             return $target
         }
         Say-Note 'Existing download is incomplete or different. Downloading again.'
@@ -634,7 +613,7 @@ function Get-CheckedDownload {
     } catch { if (([string]$_.Exception.Message).StartsWith($StopPrefix)) { throw } }
 
     $siteName = ([System.Uri]$Asset.url).Host
-    Say "  Downloading: $($Asset.url)"
+    Say "  Downloading ($(Format-Size $Asset.size)): $($Asset.url)"
     for ($attempt = 1; ; $attempt++) {
         try {
             Save-Download -Url $Asset.url -Destination $target -Label $Asset.name -ExpectedSize $Asset.size
@@ -651,20 +630,18 @@ function Get-CheckedDownload {
         }
     }
 
-    Say '  Verifying checksum...'
     if (-not (Test-Fingerprint $target $Asset.sha256)) {
         Remove-Item -LiteralPath $target -Force
         Stop-Here ("$($Asset.name): the downloaded file does not match the checksum in manifest.json. " +
                    'It was deleted and no changes were made. The download may be incomplete, or the file on the ' +
                    'server may have changed. Try again later, or check for an updated version of this tool.')
     }
-    Say-Ok 'Download verified.'
+    Say-Ok 'Checksum verified.'
     return $target
 }
 
-# ReShade's setup program is a small program with a zip archive attached to
-# its end. This reads that archive and pulls out one file, without running
-# the setup program at all.
+# The ReShade setup executable has a zip archive appended at a 512-byte
+# boundary. Extracts one entry from it without running the executable.
 function Export-ReShadeDll {
     param([string]$SetupPath, [string]$EntryName, [string]$OutPath)
     Add-Type -AssemblyName System.IO.Compression
@@ -697,15 +674,12 @@ function Export-ReShadeDll {
     return $false
 }
 
-# Works with the effects pack in one of three ways:
-#   -Mode Inspect : check every entry, write nothing, report what is inside
-#   -Mode Unpack  : check every entry, then unpack
-#   -Mode Verify  : compare what is in the game folder against the pack
-# In every mode each entry is checked BEFORE anything is written:
-#   - it must land inside the game folder,
-#   - it must be inside one of the folders/files the manifest allows,
-#   - it must not be a program or script,
-#   - its full path must be short enough for Windows.
+#   -Mode Inspect : validate entries, write nothing
+#   -Mode Unpack  : validate entries, then extract
+#   -Mode Verify  : compare the game folder against the pack
+# Every entry is validated before anything is written: it must resolve inside
+# the game folder, sit under an allowed top-level item, not be a blocked file
+# type, and fit within the path length limit.
 function Invoke-Pack {
     param([string]$ZipPath, [string]$Destination, [string[]]$AllowedTopLevel,
           [ValidateSet('Inspect', 'Unpack', 'Verify')][string]$Mode)
@@ -777,7 +751,7 @@ function Invoke-Pack {
 }
 
 # ---------------------------------------------------------------------------
-#  Looking at what is already in the game folder
+#  Game folder state
 # ---------------------------------------------------------------------------
 
 function Get-ProductName {
@@ -795,8 +769,8 @@ function Test-CanWrite {
     } catch { return $false }
 }
 
-# True if a copy of the game started from this folder is running. If Windows
-# won't say where a running copy was started from, assume it is this one.
+# True if the game is running from this folder. A process whose path cannot
+# be read counts as a match.
 function Test-GameRunning {
     param([string]$GameFolder)
     $root = $GameFolder.TrimEnd('\') + '\'
@@ -849,7 +823,7 @@ function Get-Record {
     return $null
 }
 
-# What ReShade itself wrote the last time it started with the game.
+# Last start time and version from ReShade.log.
 function Get-ReShadeLogInfo {
     param([string]$Game)
     try {
@@ -864,11 +838,11 @@ function Get-ReShadeLogInfo {
 }
 
 # ---------------------------------------------------------------------------
-#  Checking an install is complete
+#  Install checks
 # ---------------------------------------------------------------------------
 
-# Returns a list of checks, each with a name, pass/fail, and what to do about
-# a failure. With -PackZip it compares every file against the pack itself.
+# Returns checks with a name, result and advice. With -PackZip, every file
+# is compared against the pack.
 function Get-InstallChecks {
     param([string]$Game, $Record, [string]$PackZip)
     $checks = New-Object System.Collections.Generic.List[object]
@@ -930,7 +904,7 @@ function Get-InstallChecks {
     return $checks.ToArray()
 }
 
-# Prints the checks and returns how many failed.
+# Prints the checks. Returns the number that failed.
 function Show-Checks {
     param($Checks)
     $failed = 0
@@ -957,30 +931,25 @@ function Start-Install {
     if (-not $Menu) {
         Say "  $ToolTitle $ToolVersion" 'White'
         Say '  ReShade + GPosingway setup for FINAL FANTASY XIV'
+        Say ''
     }
-    if ($DryRun) { Say '  PREVIEW MODE: nothing is downloaded or changed.' 'Magenta' }
-    Say-Ok 'System check passed.'
-    Say ''
+    if ($DryRun) { Say '  PREVIEW MODE: nothing is downloaded or changed.' 'Magenta'; Say '' }
     Say '  Installs:'
-    Say "    ReShade $($m.reshade.version) (add-on edition)   $($m.reshade.homepage)" 'White'
-    Say "    GPosingway $($m.gposingway.version)   $($m.gposingway.homepage)" 'White'
+    Say ('    {0}{1}' -f "ReShade $($m.reshade.version) (add-on edition)".PadRight(34), $m.reshade.homepage) 'White'
+    Say ('    {0}{1}' -f "GPosingway $($m.gposingway.version)".PadRight(34), $m.gposingway.homepage) 'White'
     Say ''
-    Say '  Files are downloaded from their official sources and verified against'
-    Say '  the SHA-256 checksums in manifest.json. Existing files are backed up'
-    Say '  before being replaced. Nothing outside the game folder is modified.'
+    Say '  Downloads are verified against the SHA-256 checksums in manifest.json.'
+    Say '  Existing files are backed up before being replaced.'
     Say ''
     Say '  Unofficial community tool. Not affiliated with Square Enix.'
     Say ''
     if (-not (Ask-YesNo '  Continue?')) { Stop-Here 'No changes were made.' }
 
-    # --- Step 1 -----------------------------------------------------------
     Say-Step 1 $steps 'Locate game'
     $game = Select-GameFolder
     Confirm-GameFolder $game
-    Say-Ok "Game folder: $game"
     Wait-GameClosed $game
 
-    # --- Step 2 -----------------------------------------------------------
     Say-Step 2 $steps 'Existing files'
     $dxgi        = Join-Path $game $m.reshade.installAs
     $recordDir   = Join-Path $game $RecordFolder
@@ -989,12 +958,12 @@ function Start-Install {
     $toBackUp    = New-Object System.Collections.Generic.List[string]
     $reshadeDone = $false
 
-    # If this tool was used here before, remember what was in the
-    # folder BEFORE that first install, so Uninstall still restores that.
+    # On a repeat install, keep the first backup so Uninstall restores the
+    # original state.
     $prev         = Get-Record $game
-    $origBackup   = $null      # where the pre-install files were put
-    $origNames    = @()        # which pre-install files are in there
-    $oursAlready  = @()        # things a previous run of this tool installed
+    $origBackup   = $null      # backup folder from the first install
+    $origNames    = @()        # names in that backup
+    $oursAlready  = @()        # items an earlier run installed
     if ($prev) {
         if ($prev.backupFolder) { $origBackup = [string]$prev.backupFolder }
         $origNames   = @($prev.backedUp)
@@ -1065,11 +1034,7 @@ function Start-Install {
         } catch { if (([string]$_.Exception.Message).StartsWith($StopPrefix)) { throw } }
     }
 
-    # --- Step 3 -----------------------------------------------------------
     Say-Step 3 $steps 'ReShade'
-    Say "  ReShade $($m.reshade.version), add-on edition (required for depth-based effects)."
-    Say "  Project: $($m.reshade.homepage)"
-    Say ''
     $reshadeDll = $null
     if ($reshadeDone) {
         Say-Ok 'Already installed. Skipped.'
@@ -1078,7 +1043,6 @@ function Start-Install {
         Say-Preview "Would verify it and extract $($m.reshade.dllEntry)."
     } else {
         $setup = Get-CheckedDownload $m.reshade
-        Say "  Extracting $($m.reshade.dllEntry) from the setup file (the setup program is not run)..."
         $reshadeDll = Join-Path $CacheDir ("ReShade64-$($m.reshade.version).dll")
         if (-not (Export-ReShadeDll -SetupPath $setup -EntryName $m.reshade.dllEntry -OutPath $reshadeDll)) {
             Stop-Here "$($m.reshade.dllEntry) was not found in the ReShade setup file. No changes were made."
@@ -1087,28 +1051,21 @@ function Start-Install {
             Remove-Item -LiteralPath $reshadeDll -Force
             Stop-Here 'The extracted ReShade file does not match the checksum in manifest.json. No changes were made.'
         }
-        Say-Ok 'ReShade verified.'
+        Say-Ok "Extracted $($m.reshade.dllEntry) and verified it. The setup program was not run."
     }
 
-    # --- Step 4 -----------------------------------------------------------
     Say-Step 4 $steps 'GPosingway'
-    Say "  GPosingway $($m.gposingway.version): shaders and presets for FFXIV."
-    Say "  Project: $($m.gposingway.homepage)"
-    Say "  Download size: $(Format-Size $m.gposingway.size)."
-    Say ''
     $pack = $null
     $inside = $null
     if ($DryRun) {
-        Say-Preview "Would download $($m.gposingway.fileName) from $($m.gposingway.url)"
+        Say-Preview "Would download $($m.gposingway.fileName) ($(Format-Size $m.gposingway.size)) from $($m.gposingway.url)"
         Say-Preview 'Would verify it and inspect every file before unpacking.'
     } else {
         $pack = Get-CheckedDownload $m.gposingway
-        Say '  Inspecting pack contents...'
         $inside = Invoke-Pack -ZipPath $pack -Destination $game -AllowedTopLevel $m.gposingway.allowedTopLevel -Mode Inspect
         Say-Ok "$($inside.Files) files. No programs or scripts."
     }
 
-    # --- Step 5 -----------------------------------------------------------
     Say-Step 5 $steps 'Install'
     Say '  Changes to be made in:'
     Say "    $game" 'White'
@@ -1143,14 +1100,13 @@ function Start-Install {
         backupFolder      = $origBackup
         backedUp          = @($origNames)
     }
-    # If ReShade was already here and matching, it only counts as "ours"
-    # (to remove on uninstall) when an earlier run of this tool installed it.
+    # A matching ReShade that was already present is removed on uninstall
+    # only if an earlier run installed it.
     if ($reshadeDone) { $record.reshadeInstalled = [bool]($prev -and $prev.reshadeInstalled) }
     $recordPath = Join-Path $recordDir 'install-record.json'
 
-    # Two kinds of existing files get moved aside:
-    #   - files from before this tool was ever used: kept to restore on uninstall
-    #   - files a previous run of this tool installed: kept, but not restored
+    # Files that predate this tool go to the restore folder. Files from an
+    # earlier run go to a separate folder and are not restored.
     $restoreDir  = $backupDir
     if ($origBackup) { $restoreDir = $origBackup }
     $replacedDir = "$backupDir-previous-install"
@@ -1175,13 +1131,10 @@ function Start-Install {
         Copy-Item -LiteralPath $reshadeDll -Destination $dxgi -Force
         Say-Ok "Added $($m.reshade.installAs)."
     }
-    Say '  Unpacking shaders and presets...'
     $unpacked = Invoke-Pack -ZipPath $pack -Destination $game -AllowedTopLevel $m.gposingway.allowedTopLevel -Mode Unpack
     Say-Ok "Unpacked $($unpacked.Files) files."
 
-    # --- Step 6 -----------------------------------------------------------
     Say-Step 6 $steps 'Verify'
-    Say '  Verifying installed files...'
     $recordObject = Get-Record $game
     $failed = Show-Checks (Get-InstallChecks -Game $game -Record $recordObject -PackZip $pack)
     if ($failed -gt 0) {
@@ -1198,33 +1151,25 @@ function Start-Install {
     Say ''
     Say '  Installation complete. All checks passed.' 'Green'
     Say ''
-    Say '  Next steps:'
-    Say '    1. Start the game. A ReShade banner appears briefly at the top of the screen.'
-    Say '    2. Shift+F2 opens the ReShade menu. Select a preset from the list at the top.'
-    Say '    3. Shift+F3 toggles all effects.'
-    Say ''
-    Say '  No banner: run OpenShade.cmd and choose Check.'
+    Say '  In game: Shift+F2 opens the ReShade menu (pick a preset at the top). Shift+F3 toggles effects.'
     Say '  Troubleshooting: https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md'
-    Say '  To uninstall: run OpenShade.cmd and choose Uninstall.'
     Say "  Log: $LogPath"
     Say ''
-    if (Ask-YesNo -DefaultNo -Question ("  Delete the downloaded pack ({0})? It is no longer needed." -f (Format-Size $m.gposingway.size))) {
+    if (Ask-YesNo -DefaultNo -Question ("  Delete the downloaded pack ({0})?" -f (Format-Size $m.gposingway.size))) {
         Remove-Item -LiteralPath $pack -Force
         Say-Ok 'Deleted.'
     }
 }
 
 # ---------------------------------------------------------------------------
-#  The check-up (changes nothing)
+#  Check (read-only)
 # ---------------------------------------------------------------------------
 
 function Start-Check {
     Say ''
     Say "  $ToolTitle $ToolVersion - install check (read-only)" 'White'
-    Say-Ok 'System check passed.'
     Say ''
     $game = Select-GameFolder
-    Say-Ok "Game folder: $game"
     Say ''
     $record = Get-Record $game
     $logInfo = Get-ReShadeLogInfo $game
@@ -1347,7 +1292,7 @@ function Start-Uninstall {
 }
 
 # ---------------------------------------------------------------------------
-#  Menu (what OpenShade.cmd opens)
+#  Menu
 # ---------------------------------------------------------------------------
 
 # Returns 'install', 'preview', 'check', 'uninstall' or 'quit'.

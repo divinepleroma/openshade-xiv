@@ -66,7 +66,7 @@ Versions, download addresses and SHA-256 checksums are pinned in [`manifest.json
 ## Preview
 
 ```text
-OpenShade XIV 0.3.1
+OpenShade XIV 0.3.2
 ReShade + GPosingway setup for FINAL FANTASY XIV
 [ok] System check passed.
 
@@ -78,9 +78,8 @@ Files are downloaded from their official sources and verified against
 the SHA-256 checksums in manifest.json. Existing files are backed up
 before being replaced. Nothing outside the game folder is modified.
 
-Third-party tools are not permitted by the FINAL FANTASY XIV terms of
-service. This software is provided "as is", without warranty of any
-kind. Use at your own risk.
+Unofficial third-party tool, provided "as is" without warranty.
+Not affiliated with Square Enix.
 
 Continue? [Y/N]:
 ```
@@ -152,9 +151,7 @@ Continue? [Y/N]:
 
 ## Disclaimer
 
-- Third-party tools are not permitted by the FINAL FANTASY XIV terms of service. Use at your own risk.
-- This software is provided "as is", without warranty of any kind. See [LICENSE](LICENSE).
-- This project is not affiliated with or endorsed by Square Enix, ReShade or GPosingway.
+OpenShade XIV is an unofficial third-party tool, provided "as is" without warranty (see [LICENSE](LICENSE)). It is not affiliated with or endorsed by Square Enix, ReShade or GPosingway. Use at your own discretion.
 
 ## Credits
 

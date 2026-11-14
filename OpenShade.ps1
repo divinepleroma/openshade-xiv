@@ -53,7 +53,7 @@ $ErrorActionPreference = 'Stop'
 
 $ToolTitle    = 'OpenShade XIV'
 $ToolName     = 'openshade-xiv'             # used for folder names
-$ToolVersion  = '0.3.1'
+$ToolVersion  = '0.3.2'
 $GameExe      = 'ffxiv_dx11.exe'
 $RecordFolder = '.openshade-xiv'            # created inside the game folder
 $StopPrefix   = 'OPENSHADE-STOP: '
@@ -962,9 +962,8 @@ function Start-Install {
     Say '  the SHA-256 checksums in manifest.json. Existing files are backed up'
     Say '  before being replaced. Nothing outside the game folder is modified.'
     Say ''
-    Say '  Third-party tools are not permitted by the FINAL FANTASY XIV terms of'
-    Say '  service. This software is provided "as is", without warranty of any'
-    Say '  kind. Use at your own risk.'
+    Say '  Unofficial third-party tool, provided "as is" without warranty.'
+    Say '  Not affiliated with Square Enix.'
     Say ''
     if (-not (Ask-YesNo '  Continue?')) { Stop-Here 'No changes were made.' }
 

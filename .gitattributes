@@ -6,3 +6,7 @@
 *.ps1 text
 *.json text
 *.md text
+
+# Images are binary.
+*.png binary
+*.jpg binary

@@ -4,7 +4,7 @@
   "reshade": {
     "name": "ReShade (add-on edition)",
     "version": "6.8.0",
-    "homepage": "https://reshade.me",
+    "homepage": "https://github.com/crosire/reshade",
     "url": "https://reshade.me/downloads/ReShade_Setup_6.8.0_Addon.exe",
     "fileName": "ReShade_Setup_6.8.0_Addon.exe",
     "size": 4318424,

@@ -1,0 +1,66 @@
+name: Problem report
+description: Something went wrong while installing, checking or uninstalling.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For a problem inside ReShade or with a preset after a successful install, see GPosingway's [troubleshooting guide](https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md) first.
+
+        Please do not report security problems here. See the [security policy](https://github.com/divinepleroma/openshade-xiv/security/policy).
+  - type: dropdown
+    id: action
+    attributes:
+      label: What were you doing?
+      options:
+        - Install or repair
+        - Preview
+        - Check
+        - Uninstall
+        - Starting OpenShade.cmd
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected, and what you saw instead. Copy the on-screen message if there was one.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: OpenShade XIV version
+      description: Shown at the top of the menu.
+      placeholder: 0.4.2
+    validations:
+      required: true
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows version
+      options:
+        - Windows 11
+        - Windows 10
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: game-source
+    attributes:
+      label: How is the game installed?
+      options:
+        - Square Enix launcher
+        - Steam
+        - XIVLauncher
+        - Other or not sure
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: |
+        Press Win+R, paste `%LOCALAPPDATA%\openshade-xiv\log.txt` and press Enter, then copy the lines from the last run here.
+        The log contains folder paths, which can include your Windows user name. Remove anything you do not want public.
+      render: text

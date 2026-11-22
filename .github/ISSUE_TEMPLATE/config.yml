@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: ReShade or preset problems after a successful install
+    url: https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md
+    about: GPosingway's troubleshooting guide covers problems inside ReShade and with presets.
+  - name: Report a security problem privately
+    url: https://github.com/divinepleroma/openshade-xiv/security/advisories/new
+    about: Please do not open a public issue for a security problem.

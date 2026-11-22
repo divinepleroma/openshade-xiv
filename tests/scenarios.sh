@@ -106,6 +106,7 @@ echo "== $SH: GShade already installed =="
 new_env s2; echo "[x]" > "$GAME/GShade.ini"; go 'y\n' -GamePath "$GAMEW"
 check "stops (exit 1)" "[ $RC = 1 ]"
 check "explains GShade must go first" "grep -q 'GShade is installed' '$OUT'"
+check "says a leftover GShade.ini can be deleted" "grep -q 'delete GShade.ini' '$OUT'"
 check "nothing added" "[ ! -e '$GAME/dxgi.dll' ] && [ ! -e '$GAME/reshade-shaders' ] && [ ! -e '$GAME/.openshade-xiv' ]"
 
 echo "== $SH: correct ReShade already installed =="
@@ -116,6 +117,26 @@ check "did not back up or replace it" "! ls '$GAME'/.openshade-xiv/backup/*/dxgi
 check "pack still installed" "[ -f '$GAME/reshade-shaders/Shaders/new.fx' ]"
 go 'y\n' -GamePath "$GAMEW" -Uninstall
 check "uninstall keeps the ReShade it did not install" "[ $RC = 0 ] && cmp -s '$GAME/dxgi.dll' '$BASE/fake64.dll' && [ ! -e '$GAME/reshade-shaders' ]"
+
+echo "== $SH: coming from plain ReShade (its preset, log and settings are put back) =="
+new_env s3b; cp "$BASE/fake64.dll" "$GAME/dxgi.dll"
+echo "my old preset" > "$GAME/ReShadePreset.ini"; echo "old log" > "$GAME/ReShade.log"; echo "[OLDSETTINGS]" > "$GAME/ReShade.ini"
+go 'y\ny\nn\n' -GamePath "$GAMEW"
+check "install exits 0" "[ $RC = 0 ]"
+check "the earlier preset and log are in the backup" "grep -q 'my old preset' '$GAME'/.openshade-xiv/backup/*/ReShadePreset.ini && grep -q 'old log' '$GAME'/.openshade-xiv/backup/*/ReShade.log"
+go 'y\n' -GamePath "$GAMEW" -Uninstall
+check "uninstall puts the earlier preset, log and settings back" "[ $RC = 0 ] && grep -q 'my old preset' '$GAME/ReShadePreset.ini' && grep -q 'old log' '$GAME/ReShade.log' && grep -q 'OLDSETTINGS' '$GAME/ReShade.ini' && cmp -s '$GAME/dxgi.dll' '$BASE/fake64.dll'"
+
+echo "== $SH: updates leave copies behind, player is asked about the older ones =="
+new_env s3c; copies() { ls -d "$GAME"/.openshade-xiv/backup/*-previous-install 2>/dev/null | wc -l; }
+go 'y\ny\nn\n' -GamePath "$GAMEW"; go 'y\ny\nn\n' -GamePath "$GAMEW"
+check "one refresh: one copy, no question" "[ $RC = 0 ] && [ \$(copies) -eq 1 ] && ! grep -q 'earlier install' '$OUT'"
+go 'y\ny\nn\nn\n' -GamePath "$GAMEW"
+check "second refresh: asked, answered No, both copies kept" "[ $RC = 0 ] && grep -q 'Copies of 1 earlier install' '$OUT' && [ \$(copies) -eq 2 ]"
+go 'y\ny\nn\ny\n' -GamePath "$GAMEW"
+check "third refresh: answered Yes, only the newest copy is left" "[ $RC = 0 ] && grep -q 'Copies of 2 earlier install' '$OUT' && [ \$(copies) -eq 1 ]"
+go 'y\n' -GamePath "$GAMEW" -Uninstall
+check "uninstall still works afterwards" "[ $RC = 0 ] && [ ! -e '$GAME/dxgi.dll' ] && [ ! -e '$GAME/reshade-shaders' ]"
 
 echo "== $SH: unknown dxgi.dll, player answers No =="
 new_env s4; echo "another tool" > "$GAME/dxgi.dll"; go 'y\nn\n' -GamePath "$GAMEW"

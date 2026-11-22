@@ -38,7 +38,8 @@ check "old shader no longer in live folder" "[ ! -e '$G/reshade-shaders/Shaders/
 check "old shader is in backup" "ls '$G'/.openshade-xiv/backup/*/reshade-shaders/Shaders/old.fx > /dev/null 2>&1"
 check "old dxgi.dll is in backup" "grep -q 'some other tool' '$G'/.openshade-xiv/backup/*/dxgi.dll"
 check "install record written" "[ -f '$G/.openshade-xiv/install-record.json' ]"
-check "ReShade's log, default preset and screenshot folder created" "[ -f '$G/ReShade.log' ] && [ -f '$G/ReShadePreset.ini' ] && [ -d '$G/fake-screenshots' ]"
+check "ReShade's log, default preset and screenshot folder created" "[ -f '$G/ReShade.log' ] && [ -f '$G/ReShadePreset.ini' ] && [ ! -s '$G/ReShadePreset.ini' ] && [ -d '$G/fake-screenshots' ]"
+check "earlier ReShadePreset.ini is in backup" "grep -q 'old preset state' '$G'/.openshade-xiv/backup/*/ReShadePreset.ini"
 
 echo "== $SHELL_EXE: uninstall =="
 rc=$(run good -Uninstall)
@@ -49,7 +50,8 @@ check "installed shader removed" "[ ! -e '$G/reshade-shaders/Shaders/new.fx' ]"
 check "presets removed" "[ ! -e '$G/reshade-presets' ]"
 check "ReShade.ini removed" "[ ! -e '$G/ReShade.ini' ]"
 check "record folder removed" "[ ! -e '$G/.openshade-xiv' ]"
-check "log, default preset and empty screenshot folder removed" "[ ! -e '$G/ReShade.log' ] && [ ! -e '$G/ReShadePreset.ini' ] && [ ! -e '$G/fake-screenshots' ]"
+check "log and empty screenshot folder removed" "[ ! -e '$G/ReShade.log' ] && [ ! -e '$G/fake-screenshots' ]"
+check "earlier ReShadePreset.ini restored" "grep -q 'old preset state' '$G/ReShadePreset.ini'"
 check "a download folder given with -CacheDir is left alone" "[ -f '$T/good/cache/FakeSetup.exe' ]"
 
 echo "== $SHELL_EXE: uninstall with no record =="
@@ -77,7 +79,23 @@ check "installed shader removed" "[ ! -e '$G/reshade-shaders/Shaders/new.fx' ]"
 check "presets folder removed" "[ ! -e '$G/reshade-presets' ]"
 check "install record removed" "[ ! -e '$G/.openshade-xiv/install-record.json' ]"
 check "screenshot folder removed after a refresh too" "[ ! -e '$G/fake-screenshots' ]"
+check "earlier ReShadePreset.ini restored after a refresh too" "grep -q 'old preset state' '$G/ReShadePreset.ini'"
 check "saved preset still recoverable from backup" "ls '$G'/.openshade-xiv/backup/*-previous-install/reshade-presets/mine.ini > /dev/null 2>&1"
+
+echo "== $SHELL_EXE: repeated refreshes, older copies deleted =="
+python -I "$HERE/make_fixtures.py" good > /dev/null
+cp "$T/good/cache/FakePack.zip" "$T/good/FakePack.keep"
+for n in 1 2 3; do
+  cp "$T/good/FakePack.keep" "$T/good/cache/FakePack.zip"
+  rc=$(run good)
+  echo "saved after install $n" > "$G/reshade-presets/saved$n.ini"
+done
+check "third install exits 0" "[ $rc = 0 ]"
+check "only the most recent copy is kept" "[ \"\$(ls -d '$G'/.openshade-xiv/backup/*-previous-install | wc -l)\" -eq 1 ]"
+check "it holds the preset saved before the last refresh" "ls '$G'/.openshade-xiv/backup/*-previous-install/reshade-presets/saved2.ini > /dev/null 2>&1"
+check "the backup from before the first install is untouched" "grep -q 'some other tool' '$G'/.openshade-xiv/backup/*/dxgi.dll && grep -q 'old preset state' '$G'/.openshade-xiv/backup/*/ReShadePreset.ini"
+rc=$(run good -Uninstall)
+check "uninstall still restores the original files" "[ $rc = 0 ] && grep -q 'some other tool' '$G/dxgi.dll' && [ -f '$G/reshade-shaders/Shaders/old.fx' ] && grep -q 'old preset state' '$G/ReShadePreset.ini'"
 
 for c in exe addon toplevel traversal badhash; do
   echo "== $SHELL_EXE: refuses '$c' =="

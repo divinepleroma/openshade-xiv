@@ -45,6 +45,8 @@ def build(case: str):
         f.write("old shader")
     with open(os.path.join(game, "dxgi.dll"), "wb") as f:
         f.write(b"some other tool")
+    with open(os.path.join(game, "ReShadePreset.ini"), "w") as f:
+        f.write("old preset state")
 
     dll = b"FAKE RESHADE 64 DLL" * 100
     inner = make_zip([("ReShade32.dll", b"x86"), ("ReShade64.dll", dll), ("ReShade64.json", b"{}")])

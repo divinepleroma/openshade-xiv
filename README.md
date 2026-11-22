@@ -161,7 +161,7 @@ Continue? [Y/N]:
   1. Download the zip from the [latest release](https://github.com/divinepleroma/openshade-xiv/releases/latest) and extract it.
   2. Close the game, run **`OpenShade.cmd`**, and choose **Install**.
 
-  The previous `ReShade.ini`, `reshade-presets` and `reshade-shaders` are moved to `<game folder>\.openshade-xiv\backup`, in a folder ending in `-previous-install`. Presets you saved yourself are in there; copy back the ones you want.
+  The previous `ReShade.ini`, `reshade-presets` and `reshade-shaders` are moved to `<game folder>\.openshade-xiv\backup`, in a folder ending in `-previous-install`. Presets you saved yourself are in there; copy back the ones you want. The most recent copy is always kept. From the second update on, Install offers to delete the older ones.
 </details>
 
 <details>

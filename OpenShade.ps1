@@ -1169,9 +1169,14 @@ function Start-Install {
 
     $gshadeFiles = @(@($m.reshade.installAs) + $OtherInjectorNames | Where-Object {
         (Test-Path -LiteralPath (Join-Path $game $_)) -and ((Get-ProductName (Join-Path $game $_)) -like '*GShade*') })
-    if ((Test-Path -LiteralPath (Join-Path $game 'GShade.ini')) -or $gshadeFiles.Count -gt 0) {
+    if ($gshadeFiles.Count -gt 0) {
         Stop-Here ('GShade is installed in this game folder. Uninstall it first ' +
                    '(Windows Settings > Apps > GShade), then run this again. No changes were made.')
+    }
+    if (Test-Path -LiteralPath (Join-Path $game 'GShade.ini')) {
+        Stop-Here ('GShade.ini is in this game folder. If GShade is installed, uninstall it first ' +
+                   '(Windows Settings > Apps > GShade). If it has already been uninstalled, delete GShade.ini ' +
+                   'from the game folder. Then run this again. No changes were made.')
     }
 
     if (Test-Path -LiteralPath $dxgi) {
@@ -1203,6 +1208,14 @@ function Start-Install {
 
     foreach ($name in $m.gposingway.allowedTopLevel) {
         if (Test-Path -LiteralPath (Join-Path $game $name)) { $toBackUp.Add($name) }
+    }
+    # ReShade's log and default preset from an install this tool did not make
+    # are backed up as well, so Uninstall puts them back. On a refresh they
+    # belong to this install and stay where they are.
+    if (-not $prev) {
+        foreach ($name in @('ReShade.log', 'ReShadePreset.ini')) {
+            if (Test-Path -LiteralPath (Join-Path $game $name)) { $toBackUp.Add($name) }
+        }
     }
     if ($toBackUp.Count -gt 0) {
         Say '  Existing files to be backed up:'
@@ -1390,6 +1403,38 @@ function Start-Install {
     if (Ask-YesNo -DefaultNo -Question ("  Delete the downloaded pack ({0})?" -f (Format-Size $m.gposingway.size))) {
         Remove-Item -LiteralPath $pack -Force
         Say-Ok 'Deleted.'
+    }
+
+    # Every refresh keeps a copy of the install it replaced. The newest copy
+    # always stays; older ones are offered for deletion so they do not pile up.
+    $backupRoot = Join-Path $recordDir 'backup'
+    $copies = @(Get-ChildItem -LiteralPath $backupRoot -Directory -Force -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like '*-previous-install' } | Sort-Object Name -Descending)
+    if ($copies.Count -gt 1) {
+        $older = @($copies | Select-Object -Skip 1)
+        $bytes = [long]0
+        $links = $false
+        foreach ($dir in $older) {
+            foreach ($item in @(Get-ChildItem -LiteralPath $dir.FullName -Recurse -Force -ErrorAction SilentlyContinue)) {
+                if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { $links = $true }
+                elseif (-not $item.PSIsContainer) { $bytes += $item.Length }
+            }
+        }
+        Say ''
+        Say "  Copies of $($older.Count) earlier install(s) are still in the backup folder ($(Format-Size $bytes))."
+        Say '  They include any presets you saved back then. The most recent copy is kept either way.'
+        if ($links) {
+            # Deleting through a link could remove files somewhere else.
+            Say-Note 'They contain links to other folders, so they are left alone. To remove them, delete them by hand:'
+            Say "       $backupRoot"
+        } elseif (Ask-YesNo -DefaultNo -Question '  Delete the older copies?') {
+            $stuck = 0
+            foreach ($dir in $older) {
+                try { Remove-Item -LiteralPath $dir.FullName -Recurse -Force } catch { $stuck++ }
+            }
+            if ($stuck -eq 0) { Say-Ok 'Deleted.' }
+            else { Say-Note "Could not delete $stuck of them. Delete them by hand: $backupRoot" }
+        }
     }
 }
 

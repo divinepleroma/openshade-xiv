@@ -26,12 +26,15 @@ A safe, auditable installer for [ReShade](https://github.com/crosire/reshade) an
 1. Download the zip from the [latest release](https://github.com/divinepleroma/openshade-xiv/releases/latest).
 2. Right-click the zip and choose **Extract All**. Do not run it from inside the zip.
 3. Close the game.
-4. Open the extracted folder, run **`OpenShade.cmd`**, and choose **Install**.
+4. Open the extracted folder and run **`OpenShade.cmd`**. Choose **Yes** when Windows asks for permission, then choose **Install**.
 
 In game, **Shift+F2** opens the ReShade menu and **Shift+F3** toggles effects.
 
 > [!NOTE]
 > Windows may ask for confirmation before running a downloaded script. OpenShade XIV is plain text, so you can open `OpenShade.ps1` in Notepad and read it first.
+
+> [!NOTE]
+> OpenShade XIV asks for administrator permission because the game is usually installed under `Program Files`, where only an administrator can add files. If your game is somewhere else, `OpenShade.cmd noadmin` runs without it.
 
 > [!TIP]
 > Not sure yet? Choose **Preview** in the menu. It walks through every step and changes nothing.
@@ -49,7 +52,7 @@ In game, **Shift+F2** opens the ReShade menu and **Shift+F3** toggles effects.
 
 ## Usage
 
-`OpenShade.cmd` opens a menu:
+`OpenShade.cmd` asks for administrator permission, then opens a menu:
 
 | Option | Purpose |
 |---|---|
@@ -140,10 +143,10 @@ Continue? [Y/N]:
     <b>Troubleshooting</b>
   </summary>
 
-  - **"Cannot write to the game folder".** Right-click `OpenShade.cmd` and choose **Run as administrator**. This is common when the game is in `Program Files`.
+  - **"Cannot write to the game folder".** Run `OpenShade.cmd` again and choose **Yes** when Windows asks for permission. If it happens with permission given, security software may be protecting the game folder.
   - **The script is blocked from running.** Some managed work or school PCs do not allow downloaded scripts. The tool cannot run there.
   - **No ReShade banner in game.** Choose **Check** in the menu, then see GPosingway's [troubleshooting guide](https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md).
-  - **ReShade says "Unable to save configuration and/or current preset", or screenshots are not saved.** The game is in a protected folder and the install was made with version 0.4.1 or older. Download the latest release, right-click `OpenShade.cmd`, choose **Run as administrator**, and choose **Install**. Start the tool from the Windows account you play on.
+  - **ReShade says "Unable to save configuration and/or current preset", or screenshots are not saved.** The game is in a protected folder and the install was made with version 0.4.1 or older. Download the latest release, run `OpenShade.cmd`, choose **Yes** when Windows asks for permission, and choose **Install**. Start the tool from the Windows account you play on.
   - **An install stopped partway.** Choose **Install** to repair it, or **Uninstall** to put the game folder back as it was.
   - **Still stuck.** [Report a problem](https://github.com/divinepleroma/openshade-xiv/issues/new/choose) and include `%LOCALAPPDATA%\openshade-xiv\log.txt`. The log contains folder paths, which can include your Windows user name.
 </details>

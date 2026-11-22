@@ -67,7 +67,7 @@ check "Check: ReShade can save, and has not started yet" "[ $RC = 0 ] && grep -q
 powershell -NoProfile -Command "icacls '$GAMEW\\ReShade.ini' /deny \"\$env:USERNAME\`:(W)\" | Out-Null"
 go '' -GamePath "$GAMEW" -Check
 powershell -NoProfile -Command "icacls '$GAMEW\\ReShade.ini' /remove:d \"\$env:USERNAME\" | Out-Null"
-check "Check fails when this account cannot change ReShade.ini" "[ $RC = 1 ] && grep -q 'Run as administrator' '$OUT'"
+check "Check fails when this account cannot change ReShade.ini" "[ $RC = 1 ] && grep -q 'choose Install to repair' '$OUT'"
 go 'y\n' -GamePath "$GAMEW" -Uninstall
 check "uninstall leaves only the game exe" "[ $RC = 0 ] && only_exe"
 check "no answer about the downloads, and they were kept" "[ -f '$E/Local/openshade-xiv/downloads/FakePack.zip' ]"

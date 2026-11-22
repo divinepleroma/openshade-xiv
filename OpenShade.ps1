@@ -33,6 +33,10 @@
 
 .PARAMETER AssumeYes
     Answers yes to every prompt. Used by the tests.
+
+.PARAMETER RequestAdmin
+    Opens OpenShade.cmd in an administrator window and exits. Used by
+    OpenShade.cmd.
 #>
 [CmdletBinding()]
 param(
@@ -43,7 +47,8 @@ param(
     [string]$GamePath,
     [string]$ManifestPath,
     [string]$CacheDir,
-    [switch]$AssumeYes
+    [switch]$AssumeYes,
+    [switch]$RequestAdmin
 )
 
 Set-StrictMode -Version 2.0
@@ -256,6 +261,45 @@ function Enter-SingleInstance {
     } catch {
         if (([string]$_.Exception.Message).StartsWith($StopPrefix)) { throw }
     }
+}
+
+# ---------------------------------------------------------------------------
+#  Administrator permission
+# ---------------------------------------------------------------------------
+
+# The game is usually installed under Program Files, where only an
+# administrator can add files. OpenShade.cmd therefore asks Windows for
+# administrator permission once, when it starts.
+
+# True if this window has administrator permission.
+function Test-Elevated {
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+    return (New-Object System.Security.Principal.WindowsPrincipal $identity).IsInRole(
+        [System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# Opens OpenShade.cmd in an administrator window. Windows shows its
+# permission prompt first. Returns the exit code OpenShade.cmd reads:
+# 0 = the window was opened, 2 = this window already has permission,
+# 1 = permission was not given.
+function Request-Admin {
+    try {
+        if (Test-Elevated) { return 2 }
+        $cmd = Join-Path $env:SystemRoot 'System32\cmd.exe'
+        $launcher = Join-Path $PSScriptRoot 'OpenShade.cmd'
+        Start-Process -FilePath $cmd -ArgumentList ('/c ""{0}" elevated"' -f $launcher) -Verb RunAs -ErrorAction Stop
+        return 0
+    } catch { return 1 }
+}
+
+# What to tell the player when the game folder cannot be written to.
+function Get-CannotWriteText {
+    if (Test-Elevated) {
+        return ('Cannot write to the game folder, even with administrator permission. Security software may be ' +
+                'protecting it; allow this tool or the game folder there, then try again. No changes were made.')
+    }
+    return ('Cannot write to the game folder. This is common when the game is in "Program Files". Run OpenShade.cmd ' +
+            'again and choose Yes when Windows asks for permission. No changes were made.')
 }
 
 # ---------------------------------------------------------------------------
@@ -912,6 +956,15 @@ function Get-ScreenshotFolder {
     return ''
 }
 
+# The permission list of a file or folder. Windows PowerShell and PowerShell 7
+# reach the same Windows function by different names.
+function Get-AccessList {
+    param($Item)
+    $part = [System.Security.AccessControl.AccessControlSections]::Access
+    if ($PSVersionTable.PSEdition -eq 'Core') { return [System.IO.FileSystemAclExtensions]::GetAccessControl($Item, $part) }
+    return $Item.GetAccessControl($part)
+}
+
 # Adds "this account may change this file" to the item's permissions. On a
 # folder it also applies to everything inside. Nothing else is changed.
 function Add-ModifyRule {
@@ -927,17 +980,35 @@ function Add-ModifyRule {
         $inherit,
         [System.Security.AccessControl.PropagationFlags]::None,
         [System.Security.AccessControl.AccessControlType]::Allow)
-    $part = [System.Security.AccessControl.AccessControlSections]::Access
-    # Windows PowerShell and PowerShell 7 reach the same Windows function by different names.
-    if ($PSVersionTable.PSEdition -eq 'Core') {
-        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl($item, $part)
-        $acl.AddAccessRule($rule)
-        [System.IO.FileSystemAclExtensions]::SetAccessControl($item, $acl)
-    } else {
-        $acl = $item.GetAccessControl($part)
-        $acl.AddAccessRule($rule)
-        $item.SetAccessControl($acl)
-    }
+    $acl = Get-AccessList $item
+    $acl.AddAccessRule($rule)
+    if ($PSVersionTable.PSEdition -eq 'Core') { [System.IO.FileSystemAclExtensions]::SetAccessControl($item, $acl) }
+    else { $item.SetAccessControl($acl) }
+}
+
+# True if the account may change the file when it is not running as
+# administrator. Reads the file's permissions for the account itself and for
+# the groups every signed-in user is in. If they cannot be read (a drive
+# without permissions, for example), falls back to trying to open the file.
+function Test-AccountCanModify {
+    param([string]$File, [string]$Sid)
+    try {
+        # Everyone, Authenticated Users, Users, Interactive.
+        $who = @($Sid, 'S-1-1-0', 'S-1-5-11', 'S-1-5-32-545', 'S-1-5-4')
+        $write = [int][System.Security.AccessControl.FileSystemRights]::WriteData
+        $allowed = 0
+        $denied = 0
+        $acl = Get-AccessList (Get-Item -LiteralPath $File -Force)
+        foreach ($rule in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+            if ($who -notcontains $rule.IdentityReference.Value) { continue }
+            $rights = [int]$rule.FileSystemRights
+            # "Generic all" and "generic write" include writing.
+            if (($rights -band 0x10000000) -or ($rights -band 0x40000000)) { $rights = $rights -bor $write }
+            if ($rule.AccessControlType -eq [System.Security.AccessControl.AccessControlType]::Deny) { $denied = $denied -bor $rights }
+            else { $allowed = $allowed -bor $rights }
+        }
+        return ((($allowed -band (-bnot $denied)) -band $write) -ne 0)
+    } catch { return (Test-CanModify $File) }
 }
 
 # Allows the account to change each named item in the game folder. Returns
@@ -1017,9 +1088,12 @@ function Get-InstallChecks {
             ('ReShade.ini is missing or points elsewhere; presets may show no effects. ' + $rerun)
     }
     if (Test-Path -LiteralPath $ini -PathType Leaf) {
-        Add-Check $checks 'ReShade can save its settings' (Test-CanModify $ini) `
-            ('This Windows account is not allowed to change ReShade.ini, so ReShade cannot save settings or presets. ' +
-             'Right-click OpenShade.cmd, choose "Run as administrator", then choose Install to repair.')
+        # An administrator window can always write, so there the permissions
+        # of the account that plays are read instead.
+        if (Test-Elevated) { $canSave = Test-AccountCanModify $ini (Get-PlayerSid) } else { $canSave = Test-CanModify $ini }
+        Add-Check $checks 'ReShade can save its settings' $canSave `
+            ('The Windows account that plays the game is not allowed to change ReShade.ini, so ReShade cannot save ' +
+             'settings or presets. Run OpenShade.cmd, choose Yes when Windows asks for permission, then choose Install to repair.')
     }
     return $checks.ToArray()
 }
@@ -1139,11 +1213,7 @@ function Start-Install {
     }
 
     if (-not $DryRun) {
-        if (-not (Test-CanWrite $game)) {
-            Stop-Here ('Cannot write to the game folder. This is common when the game is in "Program Files" or the ' +
-                       'folder is protected by security software. Right-click OpenShade.cmd, choose "Run as administrator", ' +
-                       'and try again. No changes were made.')
-        }
+        if (-not (Test-CanWrite $game)) { Stop-Here (Get-CannotWriteText) }
         try {
             $free = (Get-Item -LiteralPath $game).PSDrive.Free
             $need = [long]$m.gposingway.size * 2 + 100MB
@@ -1292,7 +1362,8 @@ function Start-Install {
         Say-Ok "Allowed $(Get-AccountName $playerSid) to change $what."
     } else {
         Say-Note "Could not set permissions on: $($noAccess -join ', ')."
-        Say '       If ReShade reports that it cannot save, run this tool as administrator and choose Install.'
+        Say '       If ReShade reports that it cannot save, run OpenShade.cmd again, choose Yes when Windows asks'
+        Say '       for permission, and choose Install.'
     }
 
     Say-Step 6 $steps 'Verify'
@@ -1427,10 +1498,7 @@ function Start-Uninstall {
     Say-Note 'Presets saved in reshade-presets will also be removed.'
     if ($DryRun) { Say-Preview 'Preview complete. Nothing was changed.'; return }
     if (-not (Ask-YesNo '  Proceed?')) { Stop-Here 'No changes were made.' }
-    if (-not (Test-CanWrite $game)) {
-        Stop-Here ('Cannot write to the game folder. Right-click OpenShade.cmd, choose "Run as administrator", ' +
-                   'and try again. No changes were made.')
-    }
+    if (-not (Test-CanWrite $game)) { Stop-Here (Get-CannotWriteText) }
 
     $script:ChangesStarted = $true
     if ($removeDll) { Remove-Item -LiteralPath $dxgi -Force; Say-Ok "Removed $($record.reshadeFile)." }
@@ -1499,6 +1567,11 @@ function Read-MenuChoice {
     Say ''
     Say "  $ToolTitle $ToolVersion" 'White'
     Say '  ReShade + GPosingway setup for FINAL FANTASY XIV'
+    if (-not (Test-Elevated)) {
+        Say ''
+        Say '  Running without administrator permission. Install and Uninstall will' 'DarkGray'
+        Say '  only work if the game folder is not protected.' 'DarkGray'
+    }
     Say ''
     Say '    1. Install or repair'
     Say '    2. Preview (changes nothing)'
@@ -1521,6 +1594,8 @@ function Read-MenuChoice {
 # ---------------------------------------------------------------------------
 #  Start
 # ---------------------------------------------------------------------------
+
+if ($RequestAdmin) { exit (Request-Admin) }
 
 try {
     Write-Log "=== $ToolName $ToolVersion started (DryRun=$DryRun, Uninstall=$Uninstall, Check=$Check) ==="

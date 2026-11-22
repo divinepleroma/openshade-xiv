@@ -205,8 +205,16 @@ if [ "$SH" = powershell ]; then
   check "tells the player to extract the zip first" "grep -q 'Extract All' '$BASE/zipview/out.txt'"
   echo "== OpenShade.cmd launcher =="
   E="$BASE/m1"
-  printf 'q\n\n' | env LOCALAPPDATA="$(cygpath -w "$E/Local")" APPDATA="$(cygpath -w "$E/Roaming")" powershell -NoProfile -Command "& '$COPYW\\OpenShade.cmd'" > "$E/launcher.txt" 2>&1
-  check "OpenShade.cmd opens the menu" "grep -q 'Install or repair' '$E/launcher.txt' && grep -q 'Choose' '$E/launcher.txt' || grep -q 'Q. Quit' '$E/launcher.txt'"
+  # "noadmin" and "elevated" both skip the request for administrator permission,
+  # which would put a Windows prompt on screen. Nothing here runs the launcher bare.
+  printf 'q\n\n' | env LOCALAPPDATA="$(cygpath -w "$E/Local")" APPDATA="$(cygpath -w "$E/Roaming")" powershell -NoProfile -Command "& '$COPYW\\OpenShade.cmd' noadmin" > "$E/launcher.txt" 2>&1
+  check "OpenShade.cmd noadmin opens the menu" "grep -q 'Install or repair' '$E/launcher.txt' && grep -q 'Choose' '$E/launcher.txt' || grep -q 'Q. Quit' '$E/launcher.txt'"
+  # The administrator window is started as: cmd.exe /c ""<folder>\OpenShade.cmd" elevated"
+  # The same command line is used here, without the permission request.
+  printf 'q\r\n\r\n' > "$E/in.txt"
+  env LOCALAPPDATA="$(cygpath -w "$E/Local")" APPDATA="$(cygpath -w "$E/Roaming")" powershell -NoProfile -Command "Start-Process -FilePath (Join-Path \$env:SystemRoot 'System32\\cmd.exe') -ArgumentList ('/c \"\"{0}\" elevated\"' -f '$COPYW\\OpenShade.cmd') -NoNewWindow -Wait -RedirectStandardInput '$(cygpath -w "$E/in.txt")' -RedirectStandardOutput '$(cygpath -w "$E/relaunch.txt")'" > /dev/null 2>&1
+  check "the administrator window's command line opens the menu (folder name with spaces and brackets)" "grep -q 'Install or repair' '$E/relaunch.txt'"
+  check "the launcher asks for permission before the menu, and only once" "grep -q -- '-RequestAdmin' '$SRC/OpenShade.cmd' && grep -q 'if /i \"%~1\"==\"elevated\" goto :menu' '$SRC/OpenShade.cmd'"
 fi
 
 echo "== $SH: $pass passed, $fail failed =="

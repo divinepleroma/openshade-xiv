@@ -150,12 +150,15 @@ Continue? [Y/N]:
 
   When a new ReShade or GPosingway version is adopted:
 
-  1. Set the new `version`, `url`, `fileName` and `size`.
+  1. Set the new `version`, `url`, `fileName` and `size`, and the `updated` date.
   2. Set `sha256` to the SHA-256 of the downloaded file. For GPosingway, GitHub shows this as the asset digest on the release page.
   3. For ReShade, also set `dllSha256` to the SHA-256 of `ReShade64.dll` inside the setup file.
-  4. Run the tests, then a full install into a test folder.
+  4. Update the versions in this README: the badges, the **What gets installed** table and the **Preview** block. The tests fail if they do not match the manifest.
+  5. Run the tests, then a full install into a test folder. The **Live install check** workflow repeats that install from the real downloads whenever the manifest changes, and once a week.
 
   Do not point the manifest at a "latest" address. A pinned version with a pinned checksum is what makes the download verifiable.
+
+  A weekly **Upstream check** workflow opens an issue when ReShade or GPosingway publishes a newer version. It never edits the manifest.
 </details>
 
 <details>

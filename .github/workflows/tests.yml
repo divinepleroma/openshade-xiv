@@ -33,6 +33,27 @@ jobs:
           }
           Get-Content manifest.json -Raw | ConvertFrom-Json | Out-Null
 
+      - name: README versions match the manifest and the script
+        shell: pwsh
+        run: |
+          $m = Get-Content manifest.json -Raw | ConvertFrom-Json
+          $readme = Get-Content README.md -Raw
+          $line = Get-Content OpenShade.ps1 | Where-Object { $_ -like '$ToolVersion*=*' } | Select-Object -First 1
+          $tool = ($line -split "'")[1]
+          $expected = @(
+            "badge/ReShade-$($m.reshade.version)-",
+            "badge/GPosingway-$($m.gposingway.version)-",
+            "| $($m.reshade.version) |",
+            "| $($m.gposingway.version) (release $($m.gposingway.releaseTag)) |",
+            "ReShade $($m.reshade.version) (add-on edition)",
+            "OpenShade XIV $tool"
+          )
+          $missing = @($expected | Where-Object { -not $readme.Contains($_) })
+          if ($missing.Count) {
+            $missing | ForEach-Object { Write-Host "README.md is out of date. Expected to find: $_" }
+            exit 1
+          }
+
       - name: Install, uninstall and refused packages
         shell: bash
         run: bash tests/run_tests.sh ${{ matrix.shell }}

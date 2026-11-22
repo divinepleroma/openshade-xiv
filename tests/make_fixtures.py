@@ -53,7 +53,8 @@ def build(case: str):
         f.write(setup)
 
     good = [
-        ("ReShade.ini", b"[GENERAL]\r\nEffectSearchPaths=.\\reshade-shaders\\Shaders\\**\r\nTextureSearchPaths=.\\reshade-shaders\\Textures\\**\r\n"),
+        ("ReShade.ini", b"[GENERAL]\r\nEffectSearchPaths=.\\reshade-shaders\\Shaders\\**\r\nTextureSearchPaths=.\\reshade-shaders\\Textures\\**\r\n"
+                        b"\r\n[SCREENSHOT]\r\nSavePath=.\\fake-screenshots\\\r\n"),
         ("reshade-presets/", b""),
         ("reshade-presets/Witch's Presets/Moon.ini", b"preset"),
         ("reshade-shaders/Shaders/new.fx", b"shader"),

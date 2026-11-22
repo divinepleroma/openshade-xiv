@@ -106,7 +106,7 @@ Continue? [Y/N]:
   2. **Existing files.** Anything that would be replaced is moved to a backup folder inside the game folder.
   3. **ReShade.** Downloads the official setup file, verifies it, and extracts `ReShade64.dll` without running the setup program. It is installed as `dxgi.dll`.
   4. **GPosingway.** Downloads the release package, verifies it, and inspects every entry before unpacking.
-  5. **Install.** Lists every change and asks for confirmation first.
+  5. **Install.** Lists every change and asks for confirmation first. Then allows your Windows account to change `ReShade.ini`, `ReShade.log`, the presets and the screenshot folder, as ReShade's own setup does. Without this, ReShade cannot save when the game is in a protected folder such as `Program Files`.
   6. **Verify.** Compares the installed files against the package and confirms ReShade is present and unmodified.
 </details>
 
@@ -143,6 +143,7 @@ Continue? [Y/N]:
   - **"Cannot write to the game folder".** Right-click `OpenShade.cmd` and choose **Run as administrator**. This is common when the game is in `Program Files`.
   - **The script is blocked from running.** Some managed work or school PCs do not allow downloaded scripts. The tool cannot run there.
   - **No ReShade banner in game.** Choose **Check** in the menu, then see GPosingway's [troubleshooting guide](https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md).
+  - **ReShade says "Unable to save configuration and/or current preset", or screenshots are not saved.** The game is in a protected folder and the install was made with version 0.4.1 or older. Download the latest release, right-click `OpenShade.cmd`, choose **Run as administrator**, and choose **Install**. Start the tool from the Windows account you play on.
   - **An install stopped partway.** Choose **Install** to repair it, or **Uninstall** to put the game folder back as it was.
   - **Still stuck.** [Report a problem](https://github.com/divinepleroma/openshade-xiv/issues/new/choose) and include `%LOCALAPPDATA%\openshade-xiv\log.txt`. The log contains folder paths, which can include your Windows user name.
 </details>
@@ -177,6 +178,7 @@ Continue? [Y/N]:
   |---|---|---|
   | `%LOCALAPPDATA%\openshade-xiv` | `log.txt`, and the downloads if you kept them | Delete the folder |
   | `<game folder>\.openshade-xiv` | Only present if it still holds files from earlier installs | Delete the folder |
+  | `<game folder>\gposingway-screenshots` | Your screenshots. An empty folder is removed | Move or delete the folder |
 </details>
 
 <details>

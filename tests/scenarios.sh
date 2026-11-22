@@ -45,6 +45,9 @@ go() {
   RC=$?
 }
 only_exe() { [ "$(ls -A "$GAME" | tr '\n' ' ')" = "ffxiv_dx11.exe ffxivgame.ver sqpack " ]; }
+# acl <path>: the permissions on a file or folder. Entries added by the tool
+# have no (I) in front; inherited ones do.
+acl() { icacls "$(cygpath -w "$1")" | tr -d '\r'; }
 
 echo "== $SH: new player, default install path with spaces and brackets =="
 new_env s1; go 'y\ny\nn\n' -GamePath "$GAMEW"
@@ -54,6 +57,17 @@ check "preset unpacked" "[ -f \"$GAME/reshade-presets/Witch's Presets/Moon.ini\"
 check "said No to deleting the pack, and it was kept" "[ -f '$E/Local/openshade-xiv/downloads/FakePack.zip' ]"
 check "log written inside the clean profile" "[ -s '$E/Local/openshade-xiv/log.txt' ]"
 check "no errors printed" "! grep -qi 'Unexpected error' '$OUT'"
+check "this account may change ReShade.ini, the log and the default preset" "acl '$GAME/ReShade.ini' | grep -qF ':(M)' && acl '$GAME/ReShade.log' | grep -qF ':(M)' && acl '$GAME/ReShadePreset.ini' | grep -qF ':(M)'"
+check "and the presets folder, with the presets in it" "acl '$GAME/reshade-presets' | grep -qF ':(OI)(CI)(M)' && acl \"$GAME/reshade-presets/Witch's Presets/Moon.ini\" | grep -qF ':(I)(M)'"
+check "screenshot folder from ReShade.ini created, and may be changed" "[ -d '$GAME/fake-screenshots' ] && acl '$GAME/fake-screenshots' | grep -qF ':(OI)(CI)(M)'"
+check "shaders and ReShade itself are not opened up" "! acl '$GAME/reshade-shaders' | grep -qF ':(OI)(CI)(M)' && ! acl '$GAME/dxgi.dll' | grep -qF ':(M)'"
+check "says who was allowed" "grep -q 'to change the ReShade settings, presets and screenshot folder' '$OUT'"
+go '' -GamePath "$GAMEW" -Check
+check "Check: ReShade can save, and has not started yet" "[ $RC = 0 ] && grep -q 'ReShade can save its settings' '$OUT' && grep -q 'has not started with the game yet' '$OUT'"
+powershell -NoProfile -Command "icacls '$GAMEW\\ReShade.ini' /deny \"\$env:USERNAME\`:(W)\" | Out-Null"
+go '' -GamePath "$GAMEW" -Check
+powershell -NoProfile -Command "icacls '$GAMEW\\ReShade.ini' /remove:d \"\$env:USERNAME\" | Out-Null"
+check "Check fails when this account cannot change ReShade.ini" "[ $RC = 1 ] && grep -q 'Run as administrator' '$OUT'"
 go 'y\n' -GamePath "$GAMEW" -Uninstall
 check "uninstall leaves only the game exe" "[ $RC = 0 ] && only_exe"
 check "no answer about the downloads, and they were kept" "[ -f '$E/Local/openshade-xiv/downloads/FakePack.zip' ]"
@@ -71,6 +85,22 @@ new_env s1c; go 'y\ny\nn\n' -GamePath "$GAMEW"
 go 'y\nn\n' -GamePath "$GAMEW" -Uninstall
 check "uninstall leaves only the game exe" "[ $RC = 0 ] && only_exe"
 check "downloads kept, and says where" "[ -f '$E/Local/openshade-xiv/downloads/FakePack.zip' ] && grep -q 'Kept in' '$OUT'"
+
+echo "== $SH: uninstall with screenshots taken =="
+new_env s1d; go 'y\ny\nn\n' -GamePath "$GAMEW"
+echo shot > "$GAME/fake-screenshots/shot.png"
+go 'y\n' -GamePath "$GAMEW" -Uninstall
+check "uninstall exits 0" "[ $RC = 0 ]"
+check "screenshots kept, and says where" "[ -f '$GAME/fake-screenshots/shot.png' ] && grep -q 'Your screenshots were kept' '$OUT'"
+check "everything else removed" "[ \"\$(ls -A '$GAME' | tr '\n' ' ')\" = 'fake-screenshots ffxiv_dx11.exe ffxivgame.ver sqpack ' ]"
+
+echo "== $SH: screenshot folder that already existed =="
+new_env s1e; mkdir "$GAME/fake-screenshots"; echo mine > "$GAME/fake-screenshots/mine.png"
+go 'y\ny\nn\n' -GamePath "$GAMEW"
+check "install exits 0" "[ $RC = 0 ]"
+check "its permissions are left alone" "! acl '$GAME/fake-screenshots' | grep -qF ':(OI)(CI)(M)'"
+go 'y\n' -GamePath "$GAMEW" -Uninstall
+check "uninstall leaves it in place" "[ $RC = 0 ] && [ -f '$GAME/fake-screenshots/mine.png' ]"
 
 echo "== $SH: GShade already installed =="
 new_env s2; echo "[x]" > "$GAME/GShade.ini"; go 'y\n' -GamePath "$GAMEW"

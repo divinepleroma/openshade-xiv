@@ -771,6 +771,17 @@ function Test-CanWrite {
     } catch { return $false }
 }
 
+# True if this account may change the file. Opens it for writing and closes
+# it again; the file is not modified.
+function Test-CanModify {
+    param([string]$File)
+    try {
+        $stream = [System.IO.File]::Open($File, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+        $stream.Dispose()
+        return $true
+    } catch { return $false }
+}
+
 # True if the game is running from this folder. A process whose path cannot
 # be read counts as a match.
 function Test-GameRunning {
@@ -831,12 +842,114 @@ function Get-ReShadeLogInfo {
     try {
         $log = Join-Path $Game 'ReShade.log'
         if (-not (Test-Path -LiteralPath $log)) { return $null }
+        # The install creates an empty log; ReShade fills it when the game starts.
+        if ((Get-Item -LiteralPath $log).Length -eq 0) { return $null }
         $version = ''
         foreach ($line in @(Get-Content -LiteralPath $log -TotalCount 40 -ErrorAction SilentlyContinue)) {
             if ($line -match "ReShade version '([^']+)'") { $version = $Matches[1]; break }
         }
         return [pscustomobject]@{ When = (Get-Item -LiteralPath $log).LastWriteTime; Version = $version }
     } catch { return $null }
+}
+
+# ---------------------------------------------------------------------------
+#  Save access for ReShade
+# ---------------------------------------------------------------------------
+
+# ReShade runs inside the game, which does not run as administrator. When the
+# game is in a protected folder such as Program Files, ReShade cannot save its
+# settings, presets or screenshots unless the player's Windows account is
+# allowed to change those files. ReShade's own setup program grants the same
+# access; this tool does not run that program, so it grants it here.
+
+# The account that plays the game: the owner of the desktop in this session.
+# It differs from the current account when this tool was started with another
+# account's administrator password.
+function Get-PlayerSid {
+    $current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+    try {
+        $session = [System.Diagnostics.Process]::GetCurrentProcess().SessionId
+        $shell = Get-CimInstance -ClassName Win32_Process -Filter "Name = 'explorer.exe' AND SessionId = $session" -ErrorAction Stop |
+            Select-Object -First 1
+        if ($shell) {
+            $sid = [string](Invoke-CimMethod -InputObject $shell -MethodName GetOwnerSid -ErrorAction Stop).Sid
+            if ($sid -match '^S-1-\d+(-\d+)+$') { return $sid }
+        }
+    } catch { }
+    return $current
+}
+
+function Get-AccountName {
+    param([string]$Sid)
+    try {
+        return (New-Object System.Security.Principal.SecurityIdentifier $Sid).Translate([System.Security.Principal.NTAccount]).Value
+    } catch { return $Sid }
+}
+
+# True for a single folder name with no path in it.
+function Test-PlainName {
+    param([string]$Name)
+    return ($Name -match '^[^\\/:*?"<>|]+$' -and $Name -notmatch '^\.+$')
+}
+
+# The screenshot folder named in ReShade.ini, when it is a plain folder inside
+# the game folder (SavePath=.\name\). Otherwise ''.
+function Get-ScreenshotFolder {
+    param([string]$Game)
+    try {
+        $ini = Join-Path $Game 'ReShade.ini'
+        if (-not (Test-Path -LiteralPath $ini -PathType Leaf)) { return '' }
+        $inSection = $false
+        foreach ($line in @(Get-Content -LiteralPath $ini)) {
+            if ($line -match '^\s*\[(.+)\]\s*$') { $inSection = ($Matches[1] -eq 'SCREENSHOT'); continue }
+            if ($inSection -and $line -match '^SavePath=\.\\([^\\]+)\\?\s*$') {
+                $name = $Matches[1].Trim()
+                if (Test-PlainName $name) { return $name }
+                return ''
+            }
+        }
+    } catch { }
+    return ''
+}
+
+# Adds "this account may change this file" to the item's permissions. On a
+# folder it also applies to everything inside. Nothing else is changed.
+function Add-ModifyRule {
+    param([string]$Path, [string]$Sid)
+    $item = Get-Item -LiteralPath $Path -Force
+    $inherit = [System.Security.AccessControl.InheritanceFlags]::None
+    if ($item.PSIsContainer) {
+        $inherit = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+    }
+    $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        (New-Object System.Security.Principal.SecurityIdentifier $Sid),
+        [System.Security.AccessControl.FileSystemRights]::Modify,
+        $inherit,
+        [System.Security.AccessControl.PropagationFlags]::None,
+        [System.Security.AccessControl.AccessControlType]::Allow)
+    $part = [System.Security.AccessControl.AccessControlSections]::Access
+    # Windows PowerShell and PowerShell 7 reach the same Windows function by different names.
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $acl = [System.IO.FileSystemAclExtensions]::GetAccessControl($item, $part)
+        $acl.AddAccessRule($rule)
+        [System.IO.FileSystemAclExtensions]::SetAccessControl($item, $acl)
+    } else {
+        $acl = $item.GetAccessControl($part)
+        $acl.AddAccessRule($rule)
+        $item.SetAccessControl($acl)
+    }
+}
+
+# Allows the account to change each named item in the game folder. Returns
+# the names that could not be changed.
+function Grant-SaveAccess {
+    param([string]$Game, [string]$Sid, [string[]]$Names)
+    $failed = New-Object System.Collections.Generic.List[string]
+    foreach ($name in $Names) {
+        try { Add-ModifyRule -Path (Join-Path $Game $name) -Sid $Sid }
+        catch { $failed.Add($name); Write-Log "ACCESS $name failed: $($_.Exception.Message)" }
+    }
+    return $failed.ToArray()
 }
 
 # ---------------------------------------------------------------------------
@@ -902,6 +1015,11 @@ function Get-InstallChecks {
         } catch { }
         Add-Check $checks 'ReShade.ini points to the installed shaders' $pointsAtPack `
             ('ReShade.ini is missing or points elsewhere; presets may show no effects. ' + $rerun)
+    }
+    if (Test-Path -LiteralPath $ini -PathType Leaf) {
+        Add-Check $checks 'ReShade can save its settings' (Test-CanModify $ini) `
+            ('This Windows account is not allowed to change ReShade.ini, so ReShade cannot save settings or presets. ' +
+             'Right-click OpenShade.cmd, choose "Run as administrator", then choose Install to repair.')
     }
     return $checks.ToArray()
 }
@@ -1074,6 +1192,7 @@ function Start-Install {
     foreach ($name in $toBackUp) { Say "    move    $name  ->  backup" }
     if (-not $reshadeDone) { Say "    add     $($m.reshade.installAs)  (ReShade)" }
     foreach ($name in $m.gposingway.allowedTopLevel) { Say "    add     $name" }
+    Say '    allow   your Windows account to change the ReShade settings, presets and screenshot folder'
     Say ''
     if ($DryRun) {
         Say-Preview 'Preview complete. Nothing was downloaded or changed.'
@@ -1101,6 +1220,8 @@ function Start-Install {
         packBytes         = $inside.Bytes
         backupFolder      = $origBackup
         backedUp          = @($origNames)
+        saveAccessFor     = $null      # account allowed to change the ReShade settings
+        screenshotFolder  = $null      # screenshot folder created by this tool
     }
     # A matching ReShade that was already present is removed on uninstall
     # only if an earlier run installed it.
@@ -1135,6 +1256,44 @@ function Start-Install {
     }
     $unpacked = Invoke-Pack -ZipPath $pack -Destination $game -AllowedTopLevel $m.gposingway.allowedTopLevel -Mode Unpack
     Say-Ok "Unpacked $($unpacked.Files) files."
+
+    # Let ReShade save. See "Save access for ReShade" above.
+    $saveNames = New-Object System.Collections.Generic.List[string]
+    foreach ($name in @('ReShade.log', 'ReShadePreset.ini')) {
+        $path = Join-Path $game $name
+        if (-not (Test-Path -LiteralPath $path)) { [System.IO.File]::WriteAllBytes($path, (New-Object byte[] 0)) }
+    }
+    foreach ($name in @('ReShade.ini', 'ReShade.log', 'ReShadePreset.ini', 'reshade-presets')) {
+        if (Test-Path -LiteralPath (Join-Path $game $name)) { $saveNames.Add($name) }
+    }
+    # The screenshot folder is created here because ReShade could not create it
+    # in a protected game folder. One that already exists is left alone unless
+    # an earlier run of this tool created it.
+    $shots = Get-ScreenshotFolder $game
+    if ($shots) {
+        $shotsPath = Join-Path $game $shots
+        $oursBefore = ($prev -and ([string](Get-Prop $prev 'screenshotFolder' '') -eq $shots))
+        if (-not (Test-Path -LiteralPath $shotsPath)) {
+            New-Item -ItemType Directory -Path $shotsPath | Out-Null
+            $oursBefore = $true
+        }
+        if ($oursBefore -and (Test-Path -LiteralPath $shotsPath -PathType Container)) {
+            $record.screenshotFolder = $shots
+            $saveNames.Add($shots)
+        }
+    }
+    $playerSid = Get-PlayerSid
+    $noAccess = @(Grant-SaveAccess -Game $game -Sid $playerSid -Names $saveNames.ToArray())
+    $record.saveAccessFor = $playerSid
+    ($record | ConvertTo-Json -Depth 4) | Set-Content -LiteralPath $recordPath -Encoding UTF8
+    if ($noAccess.Count -eq 0) {
+        $what = 'the ReShade settings and presets'
+        if ($record.screenshotFolder) { $what = 'the ReShade settings, presets and screenshot folder' }
+        Say-Ok "Allowed $(Get-AccountName $playerSid) to change $what."
+    } else {
+        Say-Note "Could not set permissions on: $($noAccess -join ', ')."
+        Say '       If ReShade reports that it cannot save, run this tool as administrator and choose Install.'
+    }
 
     Say-Step 6 $steps 'Verify'
     $recordObject = Get-Record $game
@@ -1243,6 +1402,14 @@ function Start-Uninstall {
     }
 
     $extras = @('ReShade.log', 'ReShadePreset.ini') | Where-Object { Test-Path -LiteralPath (Join-Path $game $_) }
+    # The screenshot folder this tool created is removed only when it is empty.
+    $shots = [string](Get-Prop $record 'screenshotFolder' '')
+    $shotsPath = $null
+    $shotsEmpty = $false
+    if ((Test-PlainName $shots) -and (Test-Path -LiteralPath (Join-Path $game $shots) -PathType Container)) {
+        $shotsPath = Join-Path $game $shots
+        $shotsEmpty = (@(Get-ChildItem -LiteralPath $shotsPath -Force).Count -eq 0)
+    }
     Say '  Changes to be made in:'
     Say "    $game" 'White'
     if ($removeDll) { Say "    remove  $($record.reshadeFile)" }
@@ -1250,6 +1417,8 @@ function Start-Uninstall {
         if (Test-Path -LiteralPath (Join-Path $game $name)) { Say "    remove  $name" }
     }
     foreach ($name in $extras) { Say "    remove  $name  (created by ReShade)" }
+    if ($shotsPath -and $shotsEmpty) { Say "    remove  $shots  (empty screenshot folder)" }
+    elseif ($shotsPath) { Say "    keep    $shots  (your screenshots)" }
     $hasBackup = $record.backupFolder -and (Test-Path -LiteralPath $record.backupFolder)
     if ($hasBackup) {
         foreach ($name in $record.backedUp) { Say "    restore $name  (from backup)" }
@@ -1270,6 +1439,11 @@ function Start-Uninstall {
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path -Recurse -Force; Say-Ok "Removed $name." }
     }
     foreach ($name in $extras) { Remove-Item -LiteralPath (Join-Path $game $name) -Force }
+    if ($shotsPath -and $shotsEmpty) {
+        # No -Recurse: if a file has appeared in it since, the folder stays.
+        try { Remove-Item -LiteralPath $shotsPath -Force; Say-Ok "Removed $shots." }
+        catch { $shotsEmpty = $false }
+    }
     if ($hasBackup) {
         foreach ($name in $record.backedUp) {
             $from = Join-Path $record.backupFolder $name
@@ -1287,6 +1461,10 @@ function Start-Uninstall {
         Say-Note 'Files from earlier installs (including saved presets) remain in:'
         Say "       $recordDir"
         Say '       Delete that folder when no longer needed.'
+    }
+    if ($shotsPath -and -not $shotsEmpty) {
+        Say-Note 'Your screenshots were kept in:'
+        Say "       $shotsPath"
     }
 
     Say ''

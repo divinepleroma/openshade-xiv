@@ -48,6 +48,7 @@ check "installed shader removed" "[ ! -e '$G/reshade-shaders/Shaders/new.fx' ]"
 check "presets removed" "[ ! -e '$G/reshade-presets' ]"
 check "ReShade.ini removed" "[ ! -e '$G/ReShade.ini' ]"
 check "record folder removed" "[ ! -e '$G/.openshade-xiv' ]"
+check "a download folder given with -CacheDir is left alone" "[ -f '$T/good/cache/FakeSetup.exe' ]"
 
 echo "== $SHELL_EXE: uninstall with no record =="
 rc=$(run good -Uninstall)

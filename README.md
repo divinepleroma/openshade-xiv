@@ -56,7 +56,9 @@ In game, **Shift+F2** opens the ReShade menu and **Shift+F3** toggles effects.
 | **Install** | Installs, then verifies the result. Also repairs an existing install. |
 | **Preview** | Shows every step. Downloads and changes nothing. |
 | **Check** | Read-only. Reports whether the install is complete and whether ReShade has started with the game. |
-| **Uninstall** | Removes what was installed and restores what was backed up. |
+| **Uninstall** | Removes what was installed and restores what was backed up. Offers to delete the downloads. |
+
+Something not working? See **Troubleshooting** below, or [report a problem](https://github.com/divinepleroma/openshade-xiv/issues/new/choose).
 
 ## What gets installed
 
@@ -70,7 +72,7 @@ Versions, download addresses and SHA-256 checksums are pinned in [`manifest.json
 ## Preview
 
 ```text
-OpenShade XIV 0.4.1
+OpenShade XIV 0.4.2
 ReShade + GPosingway setup for FINAL FANTASY XIV
 
   1. Install or repair
@@ -141,6 +143,40 @@ Continue? [Y/N]:
   - **"Cannot write to the game folder".** Right-click `OpenShade.cmd` and choose **Run as administrator**. This is common when the game is in `Program Files`.
   - **The script is blocked from running.** Some managed work or school PCs do not allow downloaded scripts. The tool cannot run there.
   - **No ReShade banner in game.** Choose **Check** in the menu, then see GPosingway's [troubleshooting guide](https://github.com/gposingway/gposingway/blob/main/md/troubleshooting.md).
+  - **An install stopped partway.** Choose **Install** to repair it, or **Uninstall** to put the game folder back as it was.
+  - **Still stuck.** [Report a problem](https://github.com/divinepleroma/openshade-xiv/issues/new/choose) and include `%LOCALAPPDATA%\openshade-xiv\log.txt`. The log contains folder paths, which can include your Windows user name.
+</details>
+
+<details>
+  <summary>
+    <b>Updating</b>
+  </summary>
+
+  Each release installs the ReShade and GPosingway versions listed in its `manifest.json`. To update:
+
+  1. Download the zip from the [latest release](https://github.com/divinepleroma/openshade-xiv/releases/latest) and extract it.
+  2. Close the game, run **`OpenShade.cmd`**, and choose **Install**.
+
+  The previous `ReShade.ini`, `reshade-presets` and `reshade-shaders` are moved to `<game folder>\.openshade-xiv\backup`, in a folder ending in `-previous-install`. Presets you saved yourself are in there; copy back the ones you want.
+</details>
+
+<details>
+  <summary>
+    <b>Uninstalling</b>
+  </summary>
+
+  1. Copy any presets you want to keep out of `reshade-presets`. Uninstall removes that folder.
+  2. Close the game, run **`OpenShade.cmd`**, and choose **Uninstall**.
+  3. Answer **Y** when asked whether to delete the downloaded files.
+
+  If you no longer have the OpenShade XIV folder, download the latest release again. Uninstall works from any copy.
+
+  What is left afterwards:
+
+  | Location | Contents | To remove |
+  |---|---|---|
+  | `%LOCALAPPDATA%\openshade-xiv` | `log.txt`, and the downloads if you kept them | Delete the folder |
+  | `<game folder>\.openshade-xiv` | Only present if it still holds files from earlier installs | Delete the folder |
 </details>
 
 <details>

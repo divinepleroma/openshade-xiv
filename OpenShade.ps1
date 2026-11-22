@@ -13,7 +13,8 @@
     Shows every step. Downloads and changes nothing.
 
 .PARAMETER Uninstall
-    Removes what was installed and restores what was backed up.
+    Removes what was installed and restores what was backed up, then offers
+    to delete the downloaded files.
 
 .PARAMETER Check
     Read-only. Reports whether an existing install is complete.
@@ -54,7 +55,7 @@ $ErrorActionPreference = 'Stop'
 
 $ToolTitle    = 'OpenShade XIV'
 $ToolName     = 'openshade-xiv'             # folder name under %LOCALAPPDATA%
-$ToolVersion  = '0.4.1'
+$ToolVersion  = '0.4.2'
 $GameExe      = 'ffxiv_dx11.exe'
 $RecordFolder = '.openshade-xiv'            # created inside the game folder
 $StopPrefix   = 'OPENSHADE-STOP: '
@@ -75,7 +76,8 @@ $LocalBase = $env:LOCALAPPDATA
 if (-not $LocalBase) { $LocalBase = $env:TEMP }
 if (-not $ManifestPath) { $ManifestPath = Join-Path $PSScriptRoot 'manifest.json' }
 $AppData = Join-Path $LocalBase $ToolName
-if (-not $CacheDir) { $CacheDir = Join-Path $AppData 'downloads' }
+$OwnCache = -not $CacheDir                  # downloads go to this tool's own folder
+if ($OwnCache) { $CacheDir = Join-Path $AppData 'downloads' }
 $LogPath = Join-Path $AppData 'log.txt'
 
 $script:ExitCode       = 0
@@ -1289,6 +1291,25 @@ function Start-Uninstall {
 
     Say ''
     Say '  Uninstall complete. The game folder has been restored.' 'Green'
+
+    # Only this tool's own download folder is offered, never one given with -CacheDir.
+    if ($OwnCache -and (Test-Path -LiteralPath $CacheDir)) {
+        $kept = @(Get-ChildItem -LiteralPath $CacheDir -File -Force -ErrorAction SilentlyContinue)
+        if ($kept.Count -gt 0) {
+            $size = [long](($kept | Measure-Object -Property Length -Sum).Sum)
+            Say ''
+            if (Ask-YesNo -DefaultNo -Question ("  Delete the downloaded files ({0})?" -f (Format-Size $size))) {
+                $stuck = 0
+                foreach ($file in $kept) {
+                    try { Remove-Item -LiteralPath $file.FullName -Force } catch { $stuck++ }
+                }
+                if ($stuck -eq 0) { Say-Ok 'Deleted.' }
+                else { Say-Note "Could not delete $stuck file(s). Delete this folder by hand: $CacheDir" }
+            } else {
+                Say "  Kept in: $CacheDir"
+            }
+        }
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -1352,6 +1373,7 @@ try {
             Say '  No changes were made to the game folder.'
         }
         Say "  Log: $LogPath"
+        Say '  To report this: https://github.com/divinepleroma/openshade-xiv/issues'
         Write-Log ($_ | Out-String)
     }
     $script:ExitCode = 1

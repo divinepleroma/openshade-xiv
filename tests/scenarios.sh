@@ -56,6 +56,21 @@ check "log written inside the clean profile" "[ -s '$E/Local/openshade-xiv/log.t
 check "no errors printed" "! grep -qi 'Unexpected error' '$OUT'"
 go 'y\n' -GamePath "$GAMEW" -Uninstall
 check "uninstall leaves only the game exe" "[ $RC = 0 ] && only_exe"
+check "no answer about the downloads, and they were kept" "[ -f '$E/Local/openshade-xiv/downloads/FakePack.zip' ]"
+
+echo "== $SH: uninstall, player deletes the downloads =="
+new_env s1b; go 'y\ny\nn\n' -GamePath "$GAMEW"
+go 'y\ny\n' -GamePath "$GAMEW" -Uninstall
+check "uninstall leaves only the game exe" "[ $RC = 0 ] && only_exe"
+check "asked about the downloads (in the log)" "grep -q 'Delete the downloaded files.*-> y' '$E/Local/openshade-xiv/log.txt'"
+check "downloads deleted" "[ -z \"\$(ls -A '$E/Local/openshade-xiv/downloads')\" ]"
+check "log kept" "[ -s '$E/Local/openshade-xiv/log.txt' ]"
+
+echo "== $SH: uninstall, player keeps the downloads =="
+new_env s1c; go 'y\ny\nn\n' -GamePath "$GAMEW"
+go 'y\nn\n' -GamePath "$GAMEW" -Uninstall
+check "uninstall leaves only the game exe" "[ $RC = 0 ] && only_exe"
+check "downloads kept, and says where" "[ -f '$E/Local/openshade-xiv/downloads/FakePack.zip' ] && grep -q 'Kept in' '$OUT'"
 
 echo "== $SH: GShade already installed =="
 new_env s2; echo "[x]" > "$GAME/GShade.ini"; go 'y\n' -GamePath "$GAMEW"

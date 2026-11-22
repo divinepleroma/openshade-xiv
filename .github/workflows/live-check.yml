@@ -1,0 +1,52 @@
+name: Live install check
+
+# Installs from the real pinned downloads into a dummy game folder, then runs
+# Check and Uninstall. The tests in tests.yml use stand-in downloads, so this is
+# what notices a pinned file that has moved or changed on its server. Runs once
+# a week, and whenever the manifest or the script changes.
+on:
+  schedule:
+    # Not on the hour: scheduled runs are delayed most at the top of the hour.
+    - cron: '41 9 * * 1'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [manifest.json, OpenShade.ps1, .github/workflows/live-check.yml]
+  pull_request:
+    paths: [manifest.json, OpenShade.ps1, .github/workflows/live-check.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: Install from the pinned downloads
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install, check and uninstall in a dummy game folder
+        shell: powershell
+        run: |
+          $game = Join-Path $env:RUNNER_TEMP 'FFXIV\game'
+          New-Item -ItemType Directory -Path (Join-Path $game 'sqpack') -Force | Out-Null
+          New-Item -ItemType File -Path (Join-Path $game 'ffxiv_dx11.exe') | Out-Null
+          Set-Content -LiteralPath (Join-Path $game 'ffxivgame.ver') -Value '2026.01.01.0000.0000'
+          $common = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', 'OpenShade.ps1',
+                      '-GamePath', $game, '-CacheDir', (Join-Path $env:RUNNER_TEMP 'downloads'), '-AssumeYes')
+
+          powershell @common
+          if ($LASTEXITCODE -ne 0) { Write-Host 'Install failed.'; exit 1 }
+          powershell @common -Check
+          if ($LASTEXITCODE -ne 0) { Write-Host 'Check failed.'; exit 1 }
+          powershell @common -Uninstall
+          if ($LASTEXITCODE -ne 0) { Write-Host 'Uninstall failed.'; exit 1 }
+
+          $left = @(Get-ChildItem -LiteralPath $game -Force | ForEach-Object { $_.Name } | Sort-Object) -join ' '
+          if ($left -ne 'ffxiv_dx11.exe ffxivgame.ver sqpack') {
+            Write-Host "Uninstall left the game folder changed: $left"
+            exit 1
+          }

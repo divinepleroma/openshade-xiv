@@ -1,0 +1,12 @@
+# Opens a pull request when a GitHub Action used by the workflows has a newer
+# version. The actions are pinned to a commit, with the version in a comment;
+# Dependabot updates both. The tests run on the pull request before it is merged.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']

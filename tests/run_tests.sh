@@ -11,7 +11,8 @@ pass=0; fail=0
 check() { if eval "$2"; then echo "  PASS  $1"; pass=$((pass+1)); else echo "  FAIL  $1"; fail=$((fail+1)); fi; }
 run() { # run <case> <extra args...>
   local c="$1"; shift
-  "$SHELL_EXE" -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT" -GamePath "$TW\\$c\\FakeGame\\game" \
+  # The log and self-test files go under the work folder, not the real profile.
+  LOCALAPPDATA="$TW\\$c\\Local" "$SHELL_EXE" -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT" -GamePath "$TW\\$c\\FakeGame\\game" \
     -ManifestPath "$TW\\$c\\manifest.json" -CacheDir "$TW\\$c\\cache" -AssumeYes "$@" > "$T/$c/out-$SHELL_EXE.txt" 2>&1
   echo $?
 }
